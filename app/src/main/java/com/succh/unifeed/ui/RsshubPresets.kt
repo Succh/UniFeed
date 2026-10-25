@@ -50,14 +50,12 @@ object RsshubPresets {
             RsshubRoute("B站综合热门", "/bilibili/popular/all"),
             RsshubRoute("B站排行榜", "/bilibili/ranking/all"),
             RsshubRoute("B站UP主", "/bilibili/user/video/", "填入 UID", "2267573"),
-            RsshubRoute("B站热搜", "/bilibili/hot-search"),
-            RsshubRoute("贴吧帖子", "/tieba/forum/", "填入吧名", "linux"),
             RsshubRoute("Telegram 频道", "/telegram/channel/", "填入频道名", "awesomeRSSHub")
         )),
         RsshubCategory("科技与编程", "tech", listOf(
-            RsshubRoute("GitHub Trending", "/github/trending/daily/javascript"),
-            RsshubRoute("GitHub Releases", "/github/release/", "填入 owner/repo", "DIYgod/RSSHub"),
+            RsshubRoute("GitHub Trending", "/github/trending/daily/javascript/en"),
             RsshubRoute("GitHub Issues", "/github/issue/", "填入 owner/repo", "DIYgod/RSSHub"),
+            RsshubRoute("GitHub 仓库列表", "/github/repos/", "填入用户名", "DIYgod"),
             RsshubRoute("Hacker News", "/hackernews"),
             RsshubRoute("V2EX 最新", "/v2ex/topics/latest"),
             RsshubRoute("V2EX 最热", "/v2ex/topics/hot"),
@@ -74,14 +72,15 @@ object RsshubPresets {
             RsshubRoute("财联社电报", "/cls/telegraph"),
             RsshubRoute("财新最新", "/caixin/latest"),
             RsshubRoute("人民网头条", "/people"),
-            RsshubRoute("纽约时报中文简报", "/nytimes/daily_briefing_chinese"),
-            RsshubRoute("BBC 世界新闻", "/bbc/world")
+            RsshubRoute("纽约时报首页", "/nytimes/rss/HomePage"),
+            RsshubRoute("BBC 世界新闻", "/bbc/world"),
+            RsshubRoute("联合早报中国", "/zaobao/realtime/china")
         )),
         RsshubCategory("生活与娱乐", "life", listOf(
             RsshubRoute("豆瓣正在热映", "/douban/movie/playing"),
             RsshubRoute("豆瓣即将上映", "/douban/movie/coming"),
             RsshubRoute("豆瓣一周口碑榜", "/douban/movie/weekly"),
-            RsshubRoute("什么值得买好文", "/smzdm/haowen/1")
+            RsshubRoute("什么值得买好文", "/smzdm/haowen/fenlei/shenghuodianqi")
         )),
         RsshubCategory("二次元/ACG", "acg", listOf(
             RsshubRoute("Bangumi 每日放送", "/bangumi.tv/calendar/today"),
@@ -89,7 +88,7 @@ object RsshubPresets {
             RsshubRoute("Pixiv 周榜", "/pixiv/ranking/week")
         )),
         RsshubCategory("游戏", "game", listOf(
-            RsshubRoute("游研社", "/yystv/docs"),
+            RsshubRoute("游研社推荐", "/yystv/category/recommend"),
             RsshubRoute("机核资讯", "/gcores/news"),
             RsshubRoute("机核文章", "/gcores/articles")
         )),

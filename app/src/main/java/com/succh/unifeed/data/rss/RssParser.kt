@@ -55,8 +55,8 @@ class RssParser(private val client: OkHttpClient = OkHttpClient.Builder()
                     return@withContext fetchOnce(normalized, h)
                 } catch (e: FeedFetchException) {
                     last = e
-                    // HTTP 403/401/429 往往是 UA/Referer 问题，换头再试
-                    if (e.kind == Kind.HEADERS || e.kind == Kind.HTTP) continue
+                    // 仅 401/403/429 这类请求头问题换 UA/Referer 再试；4xx/5xx 本体不再空转
+                    if (e.kind == Kind.HEADERS) continue
                     throw e
                 } catch (e: Exception) {
                     last = e
@@ -109,18 +109,17 @@ class RssParser(private val client: OkHttpClient = OkHttpClient.Builder()
                 if (code == 401 || code == 403 || code == 429) {
                     throw FeedFetchException(Kind.HEADERS, "HTTP $code，可能需要特定 User-Agent / Referer")
                 }
+                val bytes = response.body?.bytes() ?: ByteArray(0)
+                val xml = if (bytes.isEmpty()) "" else decodeBody(bytes, response.header("Content-Type"))
+                val trimmed = stripBomAndPreface(xml)
                 if (!response.isSuccessful) {
-                    throw FeedFetchException(Kind.HTTP, "HTTP $code")
+                    throw classifyHttp(code, url, trimmed)
                 }
-                val bytes = response.body?.bytes()
-                    ?: throw FeedFetchException(Kind.EMPTY, "Empty body")
                 if (bytes.isEmpty()) {
                     throw FeedFetchException(Kind.EMPTY, "Empty body")
                 }
-                val xml = decodeBody(bytes, response.header("Content-Type"))
-                val trimmed = stripBomAndPreface(xml)
-                if (looksLikeHtml(trimmed)) {
-                    throw FeedFetchException(Kind.MALFORMED, "响应是 HTML 而非 RSS/Atom")
+                if (looksLikeHtml(trimmed) || looksLikeRsshubErrorPage(trimmed)) {
+                    throw classifyHtmlBody(url, trimmed)
                 }
                 return parse(trimmed, finalUrl.ifBlank { url })
             }
@@ -439,6 +438,42 @@ class RssParser(private val client: OkHttpClient = OkHttpClient.Builder()
         val hasFeed = head.contains("<rss") || head.contains("<feed") || head.contains("<rdf")
         if (hasFeed) return false
         return head.contains("<!doctype html") || head.contains("<html")
+    }
+
+    /** RSSHub 失败页常见标题，即使 HTTP 200 也不是 feed */
+    private fun looksLikeRsshubErrorPage(text: String): Boolean {
+        val head = text.take(800)
+        return head.contains("Welcome to RSSHub", ignoreCase = true) ||
+            head.contains("RSSHub 路由", ignoreCase = true)
+    }
+
+    private fun isRsshubUrl(url: String): Boolean {
+        val host = runCatching { java.net.URI(url).host }.getOrNull()?.lowercase() ?: return false
+        return host.contains("rsshub") ||
+            host == "succh.zone.id" ||
+            host == "rss.owo.nz" ||
+            host == "hub.slarker.me"
+    }
+
+    private fun classifyHttp(code: Int, url: String, body: String): FeedFetchException {
+        if (isRsshubUrl(url) || looksLikeRsshubErrorPage(body)) {
+            val hint = when (code) {
+                404 -> "路由不存在或参数不完整 HTTP 404"
+                401, 403 -> "需要 Cookie / 令牌 HTTP $code"
+                429 -> "触发限流 HTTP 429"
+                502, 503, 504 -> "公共实例对该路由返回 HTTP $code（反爬或上游失败）"
+                else -> "HTTP $code"
+            }
+            return FeedFetchException(Kind.RSSHUB, hint)
+        }
+        return FeedFetchException(Kind.HTTP, "HTTP $code")
+    }
+
+    private fun classifyHtmlBody(url: String, body: String): FeedFetchException {
+        if (isRsshubUrl(url) || looksLikeRsshubErrorPage(body)) {
+            return FeedFetchException(Kind.RSSHUB, "响应是 RSSHub 错误页而非订阅源")
+        }
+        return FeedFetchException(Kind.MALFORMED, "响应是 HTML 而非 RSS/Atom")
     }
 
     private fun decodeEntities(text: String): String {

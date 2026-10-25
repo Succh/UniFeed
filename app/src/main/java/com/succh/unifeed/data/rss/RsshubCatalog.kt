@@ -25,15 +25,19 @@ data class RsshubDocRoute(
     val paramHint: String,
     val categories: List<String>
 ) {
-    /** 是否还需要用户填必选参数（示例路径无法补全时） */
+    /** 是否还需要用户填必选参数（示例路径仍含 :param 或没有示例时） */
     val needsUserParam: Boolean
-        get() {
-            if (example.isNotBlank()) return false
-            return REQUIRED_PARAM.findAll(path).any()
-        }
+        get() = hasRequiredParam(example.ifBlank { path })
 }
 
-private val REQUIRED_PARAM = Regex(""":([A-Za-z_][\w.]*)(?!\?)""")
+/** 去掉可选段后再看是否还剩 :param，避免把 `:id?` 当成必选 */
+private val OPTIONAL_PARAM = Regex(""":[A-Za-z_][\w.]*\?""")
+private val BARE_PARAM = Regex(""":[A-Za-z_][\w.]*""")
+
+private fun stripOptional(path: String): String =
+    path.replace(OPTIONAL_PARAM, "").replace(Regex("/{2,}"), "/").trimEnd('/')
+
+private fun hasRequiredParam(path: String): Boolean = BARE_PARAM.containsMatchIn(stripOptional(path))
 
 /**
  * 从 RSSHub 实例的 /api/namespace 拉取路由库（与 docs.rsshub.app 同源数据）。
@@ -132,7 +136,8 @@ class RsshubCatalog(
                 val id = keys.next()
                 val obj = root.optJSONObject(id) ?: continue
                 val nsName = obj.optString("name").ifBlank { id }
-                val cats = jsonStringList(obj.optJSONArray("categories")).ifEmpty { listOf("uncategorized") }
+                // 新版 /api/namespace 分类写在路由上，命名空间级经常为空
+                val nsCatsRaw = jsonStringList(obj.optJSONArray("categories"))
                 val routesObj = obj.optJSONObject("routes") ?: JSONObject()
                 val routes = ArrayList<RsshubDocRoute>(routesObj.length())
                 val rKeys = routesObj.keys()
@@ -143,22 +148,30 @@ class RsshubCatalog(
                     val title = rv.optString("name").ifBlank { path }
                     val example = rv.optString("example")
                     val hint = paramHint(rv)
-                    val routeCats = jsonStringList(rv.optJSONArray("categories")).ifEmpty { cats }
+                    val routeCats = jsonStringList(rv.optJSONArray("categories")).ifEmpty { nsCatsRaw }
                     routes += RsshubDocRoute(
                         nsId = id,
                         nsName = nsName,
                         title = title,
-                        path = if (path.startsWith("/")) "/$id$path".replace("//", "/") else "/$id/$path",
+                        path = joinNsPath(id, path),
                         example = normalizeExample(id, example, path),
                         paramHint = hint,
-                        categories = routeCats
+                        categories = routeCats.ifEmpty { listOf("uncategorized") }
                     )
                 }
                 if (routes.isNotEmpty()) {
-                    result += RsshubNamespace(id = id, name = nsName, categories = cats, routes = routes)
+                    val nsCats = nsCatsRaw.ifEmpty {
+                        routes.flatMap { it.categories }.distinct()
+                    }.ifEmpty { listOf("uncategorized") }
+                    result += RsshubNamespace(id = id, name = nsName, categories = nsCats, routes = routes)
                 }
             }
             return result.sortedBy { it.name }
+        }
+
+        private fun joinNsPath(nsId: String, path: String): String {
+            val p = if (path.startsWith("/")) path else "/$path"
+            return if (p == "/$nsId" || p.startsWith("/$nsId/")) p else "/$nsId$p"
         }
 
         /** 把文档 example 补成带 namespace 的绝对路径 */
@@ -172,9 +185,8 @@ class RsshubCatalog(
                 }
             }
             // 没有 example 时去掉可选参数，留下可订阅的骨架路径
-            val stripped = path.replace(Regex("""/:?[A-Za-z_][\w.]*\?"""), "")
-                .replace(Regex(""":([A-Za-z_][\w.]*)\?"""), "")
-            return if (stripped.startsWith("/$nsId")) stripped else "/$nsId/${stripped.trimStart('/')}"
+            val stripped = stripOptional(path)
+            return joinNsPath(nsId, stripped.ifBlank { "/" })
         }
 
         private fun paramHint(rv: JSONObject): String {
@@ -211,9 +223,32 @@ class RsshubCatalog(
                 extra.isEmpty() -> route.example.ifBlank { route.path }
                 route.example.isNotBlank() && !route.example.contains(':') ->
                     route.example.trimEnd('/') + "/" + extra
-                else -> route.path.substringBefore("/:") + "/" + extra
+                else -> fillRequiredParam(route.path, extra)
             }
             return base + (if (path.startsWith("/")) path else "/$path")
+        }
+
+        /** 去掉可选段后，把第一个 :param 换成用户输入 */
+        private fun fillRequiredParam(path: String, extra: String): String {
+            return BARE_PARAM.replaceFirst(stripOptional(path), extra)
+        }
+
+        fun search(namespaces: List<RsshubNamespace>, query: String, limit: Int = 80): List<RsshubDocRoute> {
+            val q = query.trim()
+            if (q.isEmpty()) return emptyList()
+            return namespaces.asSequence()
+                .flatMap { ns ->
+                    ns.routes.asSequence().filter { route ->
+                        route.title.contains(q, true) ||
+                            ns.name.contains(q, true) ||
+                            ns.id.contains(q, true) ||
+                            route.path.contains(q, true) ||
+                            route.example.contains(q, true) ||
+                            route.paramHint.contains(q, true)
+                    }
+                }
+                .take(limit)
+                .toList()
         }
     }
 }

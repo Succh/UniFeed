@@ -62,8 +62,8 @@ fun DiscoverScreen(
     var query by remember { mutableStateOf("") }
     var urlQuery by remember { mutableStateOf("") }
 
-    LaunchedEffect(activeTab) {
-        if (activeTab == 1) onLoadRsshub()
+    LaunchedEffect(activeTab, query) {
+        if (activeTab == 1 || query.isNotBlank()) onLoadRsshub()
     }
 
     fun goBack() {
@@ -297,11 +297,19 @@ fun DiscoverScreen(
                 }
 
                 rsshubNs != null -> {
+                    val shown = rsshubNs!!.routes.filter { route ->
+                        val cat = rsshubCat
+                        cat == null || cat in route.categories || cat in rsshubNs!!.categories
+                    }
                     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 4.dp)) {
-                        items(rsshubNs!!.routes, key = { it.path + it.title }) { route ->
+                        items(shown, key = { it.path + it.title }) { route ->
                             RouteRow(
                                 title = route.title,
-                                sub = if (route.paramHint.isNotBlank()) route.paramHint else "一键订阅 · ${route.example}",
+                                sub = if (route.needsUserParam) {
+                                    "需参数 · ${route.example.ifBlank { route.path }}"
+                                } else {
+                                    "一键订阅 · ${route.example}"
+                                },
                                 onClick = {
                                     if (route.needsUserParam) {
                                         param = ""
@@ -316,13 +324,15 @@ fun DiscoverScreen(
                 }
 
                 rsshubCat != null -> {
-                    val nss = rsshubNamespaces.filter { rsshubCat!! in it.categories }
-                        .ifEmpty { rsshubNamespaces.filter { it.categories.contains("uncategorized") && rsshubCat == "uncategorized" } }
+                    val nss = rsshubNamespaces.filter { ns ->
+                        rsshubCat!! in ns.categories || ns.routes.any { rsshubCat!! in it.categories }
+                    }
                     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 4.dp)) {
                         items(nss, key = { it.id }) { ns ->
+                            val count = ns.routes.count { rsshubCat!! in it.categories || rsshubCat!! in ns.categories }
                             CategoryCard(
                                 title = ns.name,
-                                subtitle = "${ns.routes.size} 条路由 · ${ns.id}",
+                                subtitle = "$count 条路由 · ${ns.id}",
                                 onClick = { rsshubNs = ns }
                             )
                         }
@@ -390,11 +400,7 @@ private fun SearchResults(
     val presetHits = RsshubPresets.allRoutes.filter { (cat, route) ->
         route.title.contains(q, true) || cat.contains(q, true) || route.path.contains(q, true)
     }
-    val docHits = namespaces.flatMap { ns ->
-        ns.routes.filter {
-            it.title.contains(q, true) || ns.name.contains(q, true) || it.path.contains(q, true) || ns.id.contains(q, true)
-        }
-    }.take(80)
+    val docHits = RsshubCatalog.search(namespaces, q)
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 4.dp)) {
         if (builtinHits.isEmpty() && presetHits.isEmpty() && docHits.isEmpty()) {
@@ -460,7 +466,10 @@ private fun RsshubBrowsePane(
             }
             else -> {
                 val grouped = namespaces
-                    .flatMap { ns -> ns.categories.map { it to ns } }
+                    .flatMap { ns ->
+                        val cats = (ns.categories + ns.routes.flatMap { it.categories }).distinct()
+                        cats.map { it to ns }
+                    }
                     .groupBy({ it.first }, { it.second })
                     .toSortedMap(compareBy { RsshubCatalog.labelOf(it) })
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 8.dp)) {

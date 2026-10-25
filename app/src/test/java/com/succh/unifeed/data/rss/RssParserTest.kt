@@ -106,4 +106,32 @@ class RssParserTest {
         val feed = parser.parse(xml, "https://x")
         assertEquals("T", feed.title)
     }
+
+    @Test
+    fun parseAtomLinkRelAlternate() {
+        val xml = """
+            <?xml version="1.0"?>
+            <feed xmlns="http://www.w3.org/2005/Atom">
+              <title>NYT</title>
+              <link rel="self" href="https://example.com/atom.xml"/>
+              <link rel="alternate" href="https://example.com/"/>
+              <entry>
+                <title>A</title>
+                <id>id-a</id>
+                <link rel="alternate" href="https://example.com/a"/>
+              </entry>
+            </feed>
+        """.trimIndent()
+        val feed = parser.parse(xml, "https://example.com/atom.xml")
+        assertEquals("https://example.com/", feed.siteUrl)
+        assertEquals("https://example.com/a", feed.entries[0].link)
+    }
+
+    @Test
+    fun kindLabelsAreChinese() {
+        assertEquals("编码问题", FeedFetchException.Kind.ENCODING.label)
+        assertEquals("需要特定请求头", FeedFetchException.Kind.HEADERS.label)
+        assertEquals("非标准/残缺 feed", FeedFetchException.Kind.MALFORMED.label)
+        assertEquals("RSSHub 路由不可用", FeedFetchException.Kind.RSSHUB.label)
+    }
 }
