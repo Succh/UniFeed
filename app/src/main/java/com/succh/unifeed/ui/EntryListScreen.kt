@@ -79,6 +79,10 @@ import com.succh.unifeed.data.db.entity.Entry
 import com.succh.unifeed.data.db.entity.Feed
 import com.succh.unifeed.ui.theme.FoloDimens
 import com.succh.unifeed.ui.theme.formatRelativeTimeZh
+import com.succh.unifeed.ui.theme.glassCardBorder
+import com.succh.unifeed.ui.theme.glassCardColor
+import com.succh.unifeed.ui.theme.glassCardColors
+import com.succh.unifeed.ui.theme.glassSurface
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 /** 滚动时向视口下方预取的封面数量 */
@@ -150,6 +154,9 @@ fun EntryListScreen(
                 singleLine = true,
                 shape = RoundedCornerShape(FoloDimens.SearchRadius),
                 colors = TextFieldDefaults.colors(
+                    focusedContainerColor = glassCardColor(),
+                    unfocusedContainerColor = glassCardColor(),
+                    disabledContainerColor = glassCardColor(),
                     focusedIndicatorColor = Color.Transparent,
                     unfocusedIndicatorColor = Color.Transparent,
                     disabledIndicatorColor = Color.Transparent
@@ -157,6 +164,7 @@ fun EntryListScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = FoloDimens.ScreenHorizontal, vertical = 8.dp)
+                    .glassSurface(shape = RoundedCornerShape(FoloDimens.SearchRadius), elevation = 4.dp)
             )
             if (showFilter) {
                 Row(
@@ -297,11 +305,11 @@ private fun CoverPrefetcher(
 
 @Composable
 private fun EntrySkeletonCard(alpha: Float) {
-    val colors = MaterialTheme.colorScheme
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(FoloDimens.CardRadius),
-        colors = CardDefaults.cardColors(containerColor = colors.surface),
+        colors = glassCardColors(),
+        border = glassCardBorder(),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Row(
@@ -600,7 +608,8 @@ private fun EntryItem(
             .fillMaxWidth()
             .alpha(cardAlpha),
         shape = RoundedCornerShape(FoloDimens.CardRadius),
-        colors = CardDefaults.cardColors(containerColor = colors.surface),
+        colors = glassCardColors(),
+        border = glassCardBorder(),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Row(

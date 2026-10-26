@@ -8,12 +8,16 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.net.toUri
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.succh.unifeed.data.db.entity.Entry
 import com.succh.unifeed.data.db.entity.Feed
 import com.succh.unifeed.data.db.entity.Folder
+import com.succh.unifeed.ui.theme.glassBarColor
+import com.succh.unifeed.ui.theme.glassGlowColor
+import com.succh.unifeed.ui.theme.glassHairline
 
 @Composable
 fun UniFeedApp(
@@ -188,10 +192,16 @@ private fun MainTabScreen(
     onMarkUnread: (Entry) -> Unit = {},
     onRefreshFeed: (Feed) -> Unit = {}
 ) {
+    val glow = glassGlowColor()
     Scaffold(
+        containerColor = Color.Transparent,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
-            NavigationBar {
+            // 半透明底栏 + 顶部分割细线，透出背景光晕
+            NavigationBar(
+                containerColor = glassBarColor(),
+                modifier = Modifier.glassHairline(glow)
+            ) {
                 NavigationBarItem(
                     selected = tab == 0,
                     onClick = { onTabChange(0) },
