@@ -8,12 +8,14 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.FormatSize
@@ -46,13 +48,16 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.succh.unifeed.data.db.entity.Entry
 import com.succh.unifeed.data.rss.ReaderImageClient
+import com.succh.unifeed.ui.theme.FoloDims
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import okhttp3.Response
 import java.util.Collections
@@ -194,6 +199,20 @@ fun ReaderScreen(
                         onClick = { prevEntry?.let(onSwitchEntry) },
                         enabled = prevEntry != null
                     ) { Text("上一篇") }
+                    // 阅读进度胶囊徽章，随滚动实时更新
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(FoloDims.PillRadius))
+                            .background(colors.surfaceVariant)
+                            .padding(horizontal = 10.dp, vertical = 2.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "${(currentProgress * 100).roundToInt()}%",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = colors.onSurfaceVariant
+                        )
+                    }
                     TextButton(
                         onClick = { nextEntry?.let(onSwitchEntry) },
                         enabled = nextEntry != null
