@@ -72,7 +72,13 @@ fun UniFeedApp(
             isPreviewing = state.isPreviewing,
             onPreviewUrl = { viewModel.previewFeed(it) },
             onConfirmSubscribe = { viewModel.confirmSubscribe() },
-            onClearPreview = { viewModel.clearFeedPreview() }
+            onClearPreview = { viewModel.clearFeedPreview() },
+            rsshubInstance = prefs.effectiveRsshubInstance,
+            rsshubNamespaces = state.rsshubNamespaces,
+            isLoadingRsshub = state.isLoadingRsshub,
+            rsshubError = state.rsshubError,
+            onLoadRsshub = { viewModel.loadRsshubCatalog() },
+            onSubscribeRsshubRoute = { route, extra -> viewModel.subscribeRsshubRoute(route, extra) }
         )
         return
     }

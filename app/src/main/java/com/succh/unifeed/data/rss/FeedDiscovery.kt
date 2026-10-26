@@ -120,7 +120,7 @@ class FeedDiscovery(
         origin.removePrefix("https://").removePrefix("http://").substringBefore(':').substringBefore('/')
 
     private companion object {
-        const val UA = "UniFeed/1.0 (RSS Reader; +https://github.com/Succh/AutoClicker)"
+        const val UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         val COMMON_PATHS = listOf("/feed", "/rss", "/rss.xml", "/atom.xml", "/feed.xml", "/index.xml")
     }
 }

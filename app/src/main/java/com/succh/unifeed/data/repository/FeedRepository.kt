@@ -10,7 +10,10 @@ import com.succh.unifeed.data.opml.OpmlFeed
 import com.succh.unifeed.data.rss.ContentExtractor
 import com.succh.unifeed.data.rss.DiscoveredFeed
 import com.succh.unifeed.data.rss.FeedDiscovery
+import com.succh.unifeed.data.rss.FeedFetchException
 import com.succh.unifeed.data.rss.RssParser
+import com.succh.unifeed.data.rss.RsshubCatalog
+import com.succh.unifeed.data.rss.RsshubNamespace
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
@@ -31,7 +34,8 @@ import kotlinx.coroutines.selects.select
 class FeedRepository(
     private val db: AppDatabase,
     private val parser: RssParser = RssParser(),
-    private val discovery: FeedDiscovery = FeedDiscovery()
+    private val discovery: FeedDiscovery = FeedDiscovery(),
+    private val rsshubCatalog: RsshubCatalog = RsshubCatalog()
 ) {
     private val feedDao = db.feedDao()
     private val entryDao = db.entryDao()
@@ -68,6 +72,26 @@ class FeedRepository(
             }
         }
 
+    /** 当前用于拼接相对路径的 RSSHub 实例 */
+    fun effectiveRsshubInstance(): String = customRsshubInstance ?: RSSHUB_DEFAULT
+
+    /**
+     * 把相对 RSSHub 路径（如 `/zhihu/hot`）或完整 URL 规范成可订阅地址。
+     */
+    fun resolveFeedUrl(raw: String): String {
+        val t = raw.trim()
+        if (t.startsWith("/")) return effectiveRsshubInstance() + t
+        return t
+    }
+
+    suspend fun loadRsshubCatalog(): Result<List<RsshubNamespace>> {
+        return try {
+            Result.success(rsshubCatalog.load(effectiveRsshubInstance()))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     private fun isRsshubUrl(url: String): Boolean {
         return runCatching { android.net.Uri.parse(url).host }.getOrNull()
             ?.let { host -> knownRsshubHosts.any { it.equals(host, ignoreCase = true) } } ?: false
@@ -93,7 +117,7 @@ class FeedRepository(
      */
     suspend fun previewFeed(url: String): Result<FeedPreview> {
         return try {
-            val (parsed, actualUrl) = fetchWithSmartFallback(url)
+            val (parsed, actualUrl) = fetchWithSmartFallback(resolveFeedUrl(url))
             Result.success(
                 FeedPreview(
                     title = parsed.title.ifEmpty { actualUrl },
@@ -165,14 +189,15 @@ class FeedRepository(
      */
     suspend fun addFeedInstant(url: String, titleHint: String? = null): Result<Feed> {
         return try {
-            val existing = feedDao.getByUrl(url)
+            val resolvedUrl = resolveFeedUrl(url)
+            val existing = feedDao.getByUrl(resolvedUrl)
             if (existing != null) {
                 return Result.success(existing)
             }
-            val inferredTitle = titleHint ?: inferTitleFromUrl(url)
+            val inferredTitle = titleHint ?: inferTitleFromUrl(resolvedUrl)
             val newFeed = Feed(
                 title = inferredTitle,
-                url = url,
+                url = resolvedUrl,
                 siteUrl = null,
                 description = "",
                 faviconUrl = ""
@@ -181,7 +206,7 @@ class FeedRepository(
             val savedFeed = newFeed.copy(id = newId)
             bgScope.launch {
                 try {
-                    val (parsed, actualUrl) = fetchWithSmartFallback(url)
+                    val (parsed, actualUrl) = fetchWithSmartFallback(resolvedUrl)
                     val now = System.currentTimeMillis()
                     feedDao.update(savedFeed.copy(
                         title = parsed.title.ifEmpty { inferredTitle },
@@ -219,7 +244,7 @@ class FeedRepository(
         return try {
             val uri = android.net.Uri.parse(url)
             val path = uri.path?.trim('/') ?: ""
-            if ((url.contains("rsshub.app") || url.contains("succh.zone.id")) && path.isNotEmpty()) {
+            if (isRsshubUrl(url) && path.isNotEmpty()) {
                 val parts = path.split("/")
                 parts.takeLast(2).joinToString("/")
             } else {
@@ -235,24 +260,38 @@ class FeedRepository(
      * 第一个返回成功且内容非空的胜出，立即 cancel 其余请求。
      */
     private suspend fun fetchWithSmartFallback(url: String): Pair<ParsedFeed, String> {
-        if (!isRsshubUrl(url)) {
+        val resolved = resolveFeedUrl(url)
+        if (!isRsshubUrl(resolved)) {
             return try {
-                parser.fetch(url) to url
+                val parsed = parser.fetch(resolved)
+                if (parsed.entries.isEmpty()) {
+                    throw FeedFetchException(FeedFetchException.Kind.EMPTY, "源可访问但没有文章")
+                }
+                parsed to resolved
+            } catch (e: FeedFetchException) {
+                throw e
             } catch (e: Exception) {
-                throw Exception("源抓取失败: ${e.message}")
+                throw FeedFetchException(FeedFetchException.Kind.NETWORK, e.message ?: "源抓取失败")
             }
         }
 
-        val path = extractRsshubPath(url)
-        if (path.isEmpty()) throw Exception("无效的 RSSHub URL")
+        val path = extractRsshubPath(resolved)
+        if (path.isEmpty()) {
+            throw FeedFetchException(FeedFetchException.Kind.RSSHUB, "无效的 RSSHub URL")
+        }
 
         val mirrorGroup = getMirrorForRoute(path)
-        val candidates = (mirrorGroup.map { buildRsshubUrl(it, path) } + url).distinct()
+        val candidates = (mirrorGroup.map { buildRsshubUrl(it, path) } + resolved).distinct()
 
         val winner = raceFetch(candidates)
-        if (winner != null) return winner
+        if (winner != null) {
+            if (winner.first.entries.isEmpty()) {
+                throw FeedFetchException(FeedFetchException.Kind.EMPTY, "源可访问但没有文章")
+            }
+            return winner
+        }
 
-        throw Exception("所有镜像均不可用，该路由可能暂不支持")
+        throw FeedFetchException(FeedFetchException.Kind.RSSHUB, "所有镜像均不可用，该路由可能暂不支持")
     }
 
     /**
@@ -301,19 +340,10 @@ class FeedRepository(
      * 根据路由前缀返回镜像组（顺序越前优先级越高）
      */
     private fun getMirrorForRoute(path: String): List<String> {
-        val routeBased = when {
-            path.startsWith("weibo/") || path.startsWith("zhihu/") || path.startsWith("bilibili/") ||
-            path.startsWith("jike/") || path.startsWith("douban/") || path.startsWith("tieba/") ||
-            path.startsWith("toutiao/") || path.startsWith("huoqu/") || path.startsWith("xueqiu/") -> {
-                listOf(RSSHUB_DEFAULT, RSSHUB_OWO, RSSHUB_CUPS, RSSHUB_OFFICIAL)
-            }
-            path.startsWith("github/") || path.startsWith("hackernews") || path.startsWith("v2ex/") ||
-            path.startsWith("lobsters/") -> {
-                listOf(RSSHUB_DEFAULT, RSSHUB_CUPS, RSSHUB_OWO, RSSHUB_OFFICIAL)
-            }
-            else -> listOf(RSSHUB_DEFAULT, RSSHUB_CUPS, RSSHUB_OWO, RSSHUB_OFFICIAL)
-        }
-        return customRsshubInstance?.let { listOf(it) + routeBased } ?: routeBased
+            val routeBased = listOf(
+            RSSHUB_DEFAULT, RSSHUB_RSSFOREVER, RSSHUB_SLARKER, RSSHUB_CUPS, RSSHUB_OWO, RSSHUB_OFFICIAL
+        )
+        return customRsshubInstance?.let { listOf(it) + routeBased.filter { m -> m != it } } ?: routeBased
     }
 
     private fun extractRsshubPath(url: String): String {
@@ -350,7 +380,7 @@ class FeedRepository(
             feedDao.updateUnreadCount(feed.id)
         } catch (e: Exception) {
             val now = System.currentTimeMillis()
-            val reason = e.message ?: "未知错误"
+            val reason = (e as? FeedFetchException)?.message ?: (e.message ?: "未知错误")
             runCatching {
                 val current = feedDao.getById(feedId) ?: feed
                 feedDao.update(

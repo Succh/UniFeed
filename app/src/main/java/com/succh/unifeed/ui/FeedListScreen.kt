@@ -332,10 +332,10 @@ private fun FeedItem(
                 }
                 if (!feed.lastRefreshError.isNullOrBlank()) {
                     Text(
-                        text = feed.lastRefreshError,
+                        text = "抓取失败 · ${feed.lastRefreshError}",
                         style = MaterialTheme.typography.labelSmall,
                         color = colors.error,
-                        maxLines = 1,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                 }

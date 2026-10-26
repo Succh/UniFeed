@@ -10,6 +10,9 @@ import com.succh.unifeed.data.db.entity.Folder
 import com.succh.unifeed.data.model.FeedPreview
 import com.succh.unifeed.data.opml.OpmlManager
 import com.succh.unifeed.data.rss.DiscoveredFeed
+import com.succh.unifeed.data.rss.RsshubCatalog
+import com.succh.unifeed.data.rss.RsshubDocRoute
+import com.succh.unifeed.data.rss.RsshubNamespace
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -38,7 +41,10 @@ data class UniFeedUiState(
     val feedPreview: FeedPreview? = null,
     val isPreviewing: Boolean = false,
     val isLoadingFullContent: Boolean = false,
-    val latestTitles: Map<Long, String> = emptyMap()
+    val latestTitles: Map<Long, String> = emptyMap(),
+    val rsshubNamespaces: List<RsshubNamespace> = emptyList(),
+    val isLoadingRsshub: Boolean = false,
+    val rsshubError: String? = null
 )
 
 enum class FilterMode { ALL, UNREAD, STARRED }
@@ -197,15 +203,36 @@ class UniFeedViewModel(application: Application) : AndroidViewModel(application)
         _uiState.update { it.copy(feedPreview = null, isPreviewing = false) }
     }
 
+    fun loadRsshubCatalog() {
+        if (_uiState.value.rsshubNamespaces.isNotEmpty() || _uiState.value.isLoadingRsshub) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingRsshub = true, rsshubError = null) }
+            val result = repo.loadRsshubCatalog()
+            result.onSuccess { list ->
+                _uiState.update { it.copy(isLoadingRsshub = false, rsshubNamespaces = list) }
+            }.onFailure { e ->
+                _uiState.update {
+                    it.copy(isLoadingRsshub = false, rsshubError = e.message ?: "无法加载 RSSHub 路由库")
+                }
+            }
+        }
+    }
+
+    fun subscribeRsshubRoute(route: RsshubDocRoute, extraParam: String = "") {
+        val url = RsshubCatalog.buildSubscribeUrl(repo.effectiveRsshubInstance(), route, extraParam)
+        val title = if (extraParam.isNotBlank()) "${route.nsName} · ${route.title}: ${extraParam.trim()}"
+        else "${route.nsName} · ${route.title}"
+        addFeed(url, title)
+    }
+
     /**
      * 添加订阅：RSSHub 源走即时订阅（先存后取），普通源走预览流程
      */
     fun addFeed(url: String, titleHint: String? = null) {
         viewModelScope.launch {
             _uiState.update { it.copy(isSubscribing = true, subscribeError = null) }
-            val trimmed = url.trim()
-            if (trimmed.contains("rsshub.app") || trimmed.contains("succh.zone.id") ||
-                trimmed.contains("rsshub.cups.moe") || trimmed.contains("rss.owo.nz")) {
+            val trimmed = repo.resolveFeedUrl(url)
+            if (isRsshubAddress(trimmed)) {
                 val result = repo.addFeedInstant(trimmed, titleHint)
                 result.onSuccess { feed ->
                     _uiState.update {
@@ -330,5 +357,13 @@ class UniFeedViewModel(application: Application) : AndroidViewModel(application)
     suspend fun importOpml(inputStream: InputStream): Pair<Int, Int> = withContext(Dispatchers.IO) {
         val list = OpmlManager.parse(inputStream)
         repo.importFeeds(list)
+    }
+
+    private fun isRsshubAddress(url: String): Boolean {
+        val host = runCatching { android.net.Uri.parse(url).host }.getOrNull()?.lowercase() ?: return false
+        return host.contains("rsshub") ||
+            host == "succh.zone.id" ||
+            host == "rss.owo.nz" ||
+            host == "hub.slarker.me"
     }
 }
