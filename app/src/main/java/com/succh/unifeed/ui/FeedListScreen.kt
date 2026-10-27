@@ -43,7 +43,6 @@ import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -63,8 +62,8 @@ import com.succh.unifeed.data.db.entity.Feed
 import com.succh.unifeed.data.db.entity.Folder
 import com.succh.unifeed.ui.theme.FoloDimens
 import com.succh.unifeed.ui.theme.formatRelativeTimeZh
-import com.succh.unifeed.ui.theme.glassCardColor
 import com.succh.unifeed.ui.theme.glassSurface
+import com.succh.unifeed.ui.theme.glassTextFieldColors
 import com.succh.unifeed.ui.theme.glassTopAppBarColors
 
 /** 侧边栏分组结果，随 feeds/searchQuery 变化才重算 */
@@ -129,14 +128,7 @@ fun FeedListScreen(
                 placeholder = { Text("搜索订阅源...") },
                 singleLine = true,
                 shape = RoundedCornerShape(FoloDimens.SearchRadius),
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = glassCardColor(),
-                    unfocusedContainerColor = glassCardColor(),
-                    disabledContainerColor = glassCardColor(),
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    disabledIndicatorColor = Color.Transparent
-                ),
+                colors = glassTextFieldColors(),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = FoloDimens.ScreenHorizontal, vertical = 8.dp)
@@ -299,12 +291,9 @@ private fun FeedItem(
                 .fillMaxWidth()
                 .heightIn(min = FoloDimens.FeedItemHeight)
                 .padding(horizontal = 8.dp, vertical = 6.dp)
-                .then(
-                    if (selected) {
-                        Modifier.glassSurface(shape = RoundedCornerShape(FoloDimens.FeedSelectedRadius), elevation = 4.dp)
-                    } else {
-                        Modifier.clip(RoundedCornerShape(FoloDimens.FeedSelectedRadius))
-                    }
+                .glassSurface(
+                    shape = RoundedCornerShape(FoloDimens.FeedSelectedRadius),
+                    elevation = if (selected) 8.dp else 2.dp
                 )
                 .combinedClickable(
                     onClick = onClick,
