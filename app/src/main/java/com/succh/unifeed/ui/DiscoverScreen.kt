@@ -308,7 +308,6 @@ fun DiscoverScreen(
                     selectedCat in selectedNs.categories
             }
         }
-                    }
                     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 4.dp)) {
                         items(shown, key = { it.path + it.title }) { route ->
                             RouteRow(
@@ -338,7 +337,6 @@ fun DiscoverScreen(
                     namespace.routes.any { selectedCat in it.categories }
             }
         }
-                    }
                     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 4.dp)) {
     items(nss, key = { it.id }) { namespace ->
         val count = namespace.routes.count {
@@ -413,12 +411,10 @@ private fun SearchResults(
             it.title.contains(q, true) || it.category.contains(q, true) || it.url.contains(q, true)
         }
     }
-    }
     val presetHits = remember(q) {
         RsshubPresets.allRoutes.filter { (cat, route) ->
             route.title.contains(q, true) || cat.contains(q, true) || route.path.contains(q, true)
         }
-    }
     }
     val docHits = remember(namespaces, q) { RsshubCatalog.search(namespaces, q) }
 
