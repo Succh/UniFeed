@@ -1,24 +1,34 @@
 package com.succh.unifeed.ui.theme
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBarColors
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -26,8 +36,6 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.ui.draw.drawWithContent
 
 /**
  * iOS 玻璃拟态常量：半透明填充、柔光描边、轻阴影。
@@ -35,13 +43,15 @@ import androidx.compose.ui.draw.drawWithContent
  */
 object GlassTokens {
     val BorderWidth = 0.6.dp
-    val CardElevation = 10.dp
-    val BarAlphaLight = 0.72f
-    val BarAlphaDark = 0.48f
-    val CardAlphaLight = 0.62f
-    val CardAlphaDark = 0.38f
-    val GlowLight = Color.White.copy(alpha = 0.55f)
-    val GlowDark = Color.White.copy(alpha = 0.16f)
+    val CardElevation = 8.dp
+    /** 顶/底栏略不透明，保证导航文字对比度 */
+    val BarAlphaLight = 0.82f
+    val BarAlphaDark = 0.64f
+    /** 卡片半透明但足够托住正文，避免浅色/深色文字发灰 */
+    val CardAlphaLight = 0.80f
+    val CardAlphaDark = 0.58f
+    val GlowLight = Color.White.copy(alpha = 0.62f)
+    val GlowDark = Color.White.copy(alpha = 0.20f)
 }
 
 @Composable
@@ -68,10 +78,54 @@ fun glassGlowColor(): Color =
     if (isDarkGlass()) GlassTokens.GlowDark else GlassTokens.GlowLight
 
 @Composable
-fun glassCardColors() = CardDefaults.cardColors(containerColor = glassCardColor())
+fun glassCardColors() = CardDefaults.cardColors(
+    containerColor = glassCardColor(),
+    contentColor = MaterialTheme.colorScheme.onSurface
+)
 
 @Composable
 fun glassCardBorder(): BorderStroke = BorderStroke(GlassTokens.BorderWidth, glassGlowColor())
+
+/** 搜索框等无下划线输入框：半透明底，文字始终走 onSurface */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun glassTextFieldColors() = TextFieldDefaults.colors(
+    focusedContainerColor = Color.Transparent,
+    unfocusedContainerColor = Color.Transparent,
+    disabledContainerColor = Color.Transparent,
+    focusedIndicatorColor = Color.Transparent,
+    unfocusedIndicatorColor = Color.Transparent,
+    disabledIndicatorColor = Color.Transparent,
+    focusedTextColor = MaterialTheme.colorScheme.onSurface,
+    unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+    cursorColor = MaterialTheme.colorScheme.primary,
+    focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+    unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+    focusedLeadingIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+    unfocusedLeadingIconColor = MaterialTheme.colorScheme.onSurfaceVariant
+)
+
+@Composable
+fun glassChipColors() = FilterChipDefaults.filterChipColors(
+    containerColor = glassCardColor(),
+    labelColor = MaterialTheme.colorScheme.onSurface,
+    selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
+    selectedLabelColor = MaterialTheme.colorScheme.onSurface
+)
+
+@Composable
+fun glassChipBorder(selected: Boolean) = FilterChipDefaults.filterChipBorder(
+    enabled = true,
+    selected = selected,
+    borderColor = glassGlowColor(),
+    selectedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.55f),
+    borderWidth = GlassTokens.BorderWidth,
+    selectedBorderWidth = GlassTokens.BorderWidth
+)
+
+/** 阅读页底栏：半透明 + 明确的内容色，避免玻璃底上图标发虚 */
+@Composable
+fun glassBottomAppBarColor(): Color = glassBarColor()
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -159,4 +213,26 @@ fun GlassBackdrop(
         )
         content()
     }
+}
+
+/**
+ * 设置页 / 分组面板用的玻璃卡片容器。
+ * 内容走 onSurface，保证浅色与深色背景下对比度。
+ */
+@Composable
+fun GlassPanel(
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(FoloDimens.CardRadius),
+    contentPadding: PaddingValues = PaddingValues(FoloDimens.CardPadding),
+    verticalArrangement: Arrangement.Vertical = Arrangement.spacedBy(8.dp),
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .glassSurface(shape = shape)
+            .padding(contentPadding),
+        verticalArrangement = verticalArrangement,
+        content = content
+    )
 }
