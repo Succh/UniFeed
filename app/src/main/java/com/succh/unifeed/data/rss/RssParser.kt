@@ -385,8 +385,8 @@ class RssParser(private val client: OkHttpClient = OkHttpClient.Builder()
             } catch (_: Exception) {
                 // 换下一个格式
             }
-        return 0L
         }
+        return 0L
     }
 
     private fun decodeBody(bytes: ByteArray, contentType: String?): String {
