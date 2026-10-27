@@ -200,6 +200,7 @@ private fun MainTabScreen(
             // 半透明底栏 + 顶部分割细线，透出背景光晕
             NavigationBar(
                 containerColor = glassBarColor(),
+                contentColor = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.glassHairline(glow)
             ) {
                 NavigationBarItem(

@@ -534,14 +534,18 @@ private fun UrlDiscoverPane(
     onClearPreview: () -> Unit
 ) {
     Column(Modifier.padding(16.dp)) {
-        OutlinedTextField(
+        TextField(
             value = query,
             onValueChange = onQuery,
             label = { Text("网站地址 或 RSS/Atom 链接") },
             placeholder = { Text("https://example.com") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-            modifier = Modifier.fillMaxWidth()
+            shape = RoundedCornerShape(FoloDimens.SearchRadius),
+            colors = glassTextFieldColors(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .glassSurface(shape = RoundedCornerShape(FoloDimens.SearchRadius), elevation = 4.dp)
         )
         Spacer(Modifier.height(8.dp))
         Row {
