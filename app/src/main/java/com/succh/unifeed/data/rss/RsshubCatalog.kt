@@ -33,9 +33,11 @@ data class RsshubDocRoute(
 /** 去掉可选段后再看是否还剩 :param，避免把 `:id?` 当成必选 */
 private val OPTIONAL_PARAM = Regex(""":[A-Za-z_][\w.]*\?""")
 private val BARE_PARAM = Regex(""":[A-Za-z_][\w.]*""")
+private val REPEATED_SLASH = Regex("/{2,}")
+private val WHITESPACE = Regex("\\s+")
 
 private fun stripOptional(path: String): String =
-    path.replace(OPTIONAL_PARAM, "").replace(Regex("/{2,}"), "/").trimEnd('/')
+    path.replace(OPTIONAL_PARAM, "").replace(REPEATED_SLASH, "/").trimEnd('/')
 
 private fun hasRequiredParam(path: String): Boolean = BARE_PARAM.containsMatchIn(stripOptional(path))
 
@@ -90,15 +92,10 @@ class RsshubCatalog(
     }
 
     companion object {
-        private const val UA =
-            "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+        private const val UA = UserAgents.MOBILE
 
-        val FALLBACK_INSTANCES = listOf(
-            "https://succh.zone.id",
-            "https://rsshub.rssforever.com",
-            "https://hub.slarker.me",
-            "https://rsshub.app"
-        )
+        /** 兜底实例与 [RsshubEndpoints] 共用，避免和抓取镜像清单漂移 */
+        val FALLBACK_INSTANCES: List<String> = RsshubEndpoints.CATALOG_FALLBACKS
 
         val CATEGORY_LABELS = mapOf(
             "social-media" to "社交媒体",
@@ -199,7 +196,7 @@ class RsshubCatalog(
                 val desc = when (v) {
                     is JSONObject -> v.optString("description")
                     else -> v?.toString().orEmpty()
-                }.replace(Regex("\\s+"), " ").trim()
+                }.replace(WHITESPACE, " ").trim()
                 if (desc.isNotEmpty()) parts += "$key: ${desc.take(80)}"
                 else parts += key
             }

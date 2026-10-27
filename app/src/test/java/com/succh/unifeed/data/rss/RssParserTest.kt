@@ -134,4 +134,84 @@ class RssParserTest {
         assertEquals("非标准/残缺 feed", FeedFetchException.Kind.MALFORMED.label)
         assertEquals("RSSHub 路由不可用", FeedFetchException.Kind.RSSHUB.label)
     }
+
+    private fun rssWith(pubDate: String): String = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0"><channel><title>T</title>
+          <item><title>A</title><link>https://a.example/1</link><guid>g1</guid>
+            <pubDate>$pubDate</pubDate>
+          </item>
+        </channel></rss>
+    """.trimIndent()
+
+    private fun utcMillis(year: Int, month: Int, day: Int, hour: Int, minute: Int): Long =
+        java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply {
+            clear()
+            set(year, month, day, hour, minute, 0)
+        }.timeInMillis
+
+    /** RFC 822 形式，与解析器第一条格式一致 */
+    private fun rfc822(millis: Long): String =
+        java.text.SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss Z", java.util.Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }.format(java.util.Date(millis))
+
+    @Test
+    fun rssPubDateIsAdopted() {
+        val expected = utcMillis(2026, java.util.Calendar.OCTOBER, 24, 8, 30)
+        val entry = parser.parse(rssWith(rfc822(expected)), "https://a.example/feed").entries[0]
+        assertEquals(expected, entry.publishedAt)
+    }
+
+    @Test
+    fun epochSecondsAndMillisAreAdopted() {
+        val seconds = parser.parse(rssWith("1792800000"), "https://a.example/feed").entries[0]
+        assertEquals(1792800000L * 1000L, seconds.publishedAt)
+        val millis = parser.parse(rssWith("1792800000123"), "https://a.example/feed").entries[0]
+        assertEquals(1792800000123L, millis.publishedAt)
+    }
+
+    @Test
+    fun unparsableDateFallsBackToFetchTime() {
+        val before = System.currentTimeMillis()
+        val entry = parser.parse(rssWith("不是时间"), "https://a.example/feed").entries[0]
+        val after = System.currentTimeMillis()
+        assertTrue("非法时间应退回抓取时间", entry.publishedAt in before..after)
+    }
+
+    @Test
+    fun missingDateFallsBackToFetchTime() {
+        val xml = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <rss version="2.0"><channel><title>T</title>
+              <item><title>A</title><link>https://a.example/1</link><guid>g1</guid></item>
+            </channel></rss>
+        """.trimIndent()
+        val before = System.currentTimeMillis()
+        val entry = parser.parse(xml, "https://a.example/feed").entries[0]
+        val after = System.currentTimeMillis()
+        assertTrue(entry.publishedAt in before..after)
+    }
+
+    @Test
+    fun atomPublishedAndUpdatedAreAdopted() {
+        val expected = utcMillis(2026, java.util.Calendar.OCTOBER, 24, 8, 30)
+        val iso = java.time.Instant.ofEpochMilli(expected).toString().removeSuffix(".0")
+        val xml = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <feed xmlns="http://www.w3.org/2005/Atom">
+              <title>T</title>
+              <entry><title>A</title><id>id-1</id>
+                <link href="https://a.example/1"/>
+                <published>$iso</published>
+              </entry>
+            </feed>
+        """.trimIndent()
+        val entry = parser.parse(xml, "https://a.example/atom.xml").entries[0]
+        assertEquals(expected, entry.publishedAt)
+
+        val updatedXml = xml.replace("<published>", "<updated>").replace("</published>", "</updated>")
+        val updatedEntry = parser.parse(updatedXml, "https://a.example/atom.xml").entries[0]
+        assertEquals(expected, updatedEntry.publishedAt)
+    }
 }

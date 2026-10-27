@@ -83,23 +83,20 @@ class UniFeedViewModel(application: Application) : AndroidViewModel(application)
                     FilterMode.STARRED -> allEntries.filter { it.isStarred }
                     FilterMode.ALL -> if (feedId != null) allEntries.filter { it.feedId == feedId } else allEntries
                 }
+                // 侧边栏「最新一篇」标题：与列表同一次全表读取算出，省掉第二条 Flow 的重复查询
+                val latestTitles = allEntries.groupBy { it.feedId }
+                    .mapValues { (_, list) -> list.maxByOrNull { it.publishedAt }?.title.orEmpty() }
                 // 同一拍带上「库里有没有文章」，避免空态/骨架屏和列表数据错位
-                filtered to allEntries.isNotEmpty()
-            }.collect { (filtered, hasLocal) ->
+                EntrySnapshot(filtered, allEntries.isNotEmpty(), latestTitles)
+            }.collect { snapshot ->
                 _uiState.update {
                     it.copy(
-                        entries = filtered,
+                        entries = snapshot.entries,
                         hasLoadedEntries = true,
-                        hasLocalEntries = hasLocal
+                        hasLocalEntries = snapshot.hasLocalEntries,
+                        latestTitles = snapshot.latestTitles
                     )
                 }
-            }
-        }
-        viewModelScope.launch {
-            repo.observeAllEntries().collect { all ->
-                val titles = all.groupBy { it.feedId }
-                    .mapValues { (_, list) -> list.maxByOrNull { it.publishedAt }?.title.orEmpty() }
-                _uiState.update { it.copy(latestTitles = titles) }
             }
         }
         viewModelScope.launch {
@@ -226,13 +223,13 @@ class UniFeedViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /**
-     * 添加订阅：RSSHub 源走即时订阅（先存后取），普通源走预览流程
+     * 添加订阅：RSSHub 源走即时订阅（先落库、再单次抓取补齐元数据），普通源走预览流程
      */
     fun addFeed(url: String, titleHint: String? = null) {
         viewModelScope.launch {
             _uiState.update { it.copy(isSubscribing = true, subscribeError = null) }
             val trimmed = repo.resolveFeedUrl(url)
-            if (isRsshubAddress(trimmed)) {
+            if (repo.isRsshubUrl(trimmed)) {
                 val result = repo.addFeedInstant(trimmed, titleHint)
                 result.onSuccess { feed ->
                     _uiState.update {
@@ -250,12 +247,7 @@ class UniFeedViewModel(application: Application) : AndroidViewModel(application)
             val feedUrl = if (looksLikeFeed) {
                 trimmed
             } else {
-                val discoveryResult = repo.discoverFeeds(trimmed)
-                if (discoveryResult.isSuccess && discoveryResult.getOrThrow().isNotEmpty()) {
-                    discoveryResult.getOrThrow().first().feedUrl
-                } else {
-                    trimmed
-                }
+                repo.discoverFeeds(trimmed).getOrNull()?.firstOrNull()?.feedUrl ?: trimmed
             }
             _uiState.update { it.copy(isSubscribing = false) }
             previewFeed(feedUrl)
@@ -358,12 +350,11 @@ class UniFeedViewModel(application: Application) : AndroidViewModel(application)
         val list = OpmlManager.parse(inputStream)
         repo.importFeeds(list)
     }
-
-    private fun isRsshubAddress(url: String): Boolean {
-        val host = runCatching { android.net.Uri.parse(url).host }.getOrNull()?.lowercase() ?: return false
-        return host.contains("rsshub") ||
-            host == "succh.zone.id" ||
-            host == "rss.owo.nz" ||
-            host == "hub.slarker.me"
-    }
 }
+
+/** 一次全表读取算出的列表派生数据，供 [UniFeedViewModel] 合并成单条 StateFlow */
+private data class EntrySnapshot(
+    val entries: List<Entry>,
+    val hasLocalEntries: Boolean,
+    val latestTitles: Map<Long, String>
+)

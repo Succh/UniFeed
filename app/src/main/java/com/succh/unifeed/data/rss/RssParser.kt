@@ -26,16 +26,37 @@ class RssParser(private val client: OkHttpClient = OkHttpClient.Builder()
 
     companion object {
         private const val MAX_ENTRIES_PER_FEED = 500
-        private const val DESKTOP_UA =
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        private const val MOBILE_UA =
-            "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+    private const val DESKTOP_UA = UserAgents.DESKTOP
+    private const val MOBILE_UA = UserAgents.MOBILE
         private const val READER_UA = "UniFeed/1.0 (+https://github.com/Succh/UniFeed; RSS Reader)"
         private val CHARSET_META = Regex(
             """encoding\s*=\s*['\"]?\s*([A-Za-z0-9_\-]+)""",
             RegexOption.IGNORE_CASE
         )
+    private val IMG_SRC = Regex(
+        """<img[^>]+(?:src|data-src|data-original)=["']([^"']+)["']""",
+        RegexOption.IGNORE_CASE
+    )
+    /** RSS pubDate / Atom published|updated 的常见形态，按精度从高到低尝试 */
+    private val DATE_PATTERNS = listOf(
+        "EEE, dd MMM yyyy HH:mm:ss Z",
+        "EEE, dd MMM yyyy HH:mm:ss zzz",
+        "yyyy-MM-dd'T'HH:mm:ss.SSSXXX",
+        "yyyy-MM-dd'T'HH:mm:ssXXX",
+        "yyyy-MM-dd'T'HH:mm:ss'Z'",
+        "yyyy-MM-dd'T'HH:mm:ss",
+        "yyyy-MM-dd HH:mm:ss",
+        "yyyy-MM-dd"
+    )
+
     }
+
+    /**
+     * 用户自定义 RSSHub 实例的域名，由 FeedRepository 在写入 customRsshubInstance 时同步。
+     * 抓取层默认拿不到该配置，不注入的话自定义实例的失败会被分类成普通 HTTP。
+     */
+    @Volatile
+    var rsshubExtraHost: String? = null
 
     /**
      * 抓取并解析 RSS/Atom 订阅源。
@@ -43,7 +64,7 @@ class RssParser(private val client: OkHttpClient = OkHttpClient.Builder()
      */
     suspend fun fetch(url: String): ParsedFeed {
         return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            val normalized = normalizeUrl(url)
+        val normalized = FeedUrls.withScheme(url)
             var last: Exception? = null
             val attempts = listOf(
                 Headers(DESKTOP_UA, refererOf(normalized)),
@@ -72,7 +93,7 @@ class RssParser(private val client: OkHttpClient = OkHttpClient.Builder()
     suspend fun fetchHtml(url: String): String {
         return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             val request = Request.Builder()
-                .url(normalizeUrl(url))
+        .url(FeedUrls.withScheme(url))
                 .header("User-Agent", DESKTOP_UA)
                 .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
                 .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
@@ -153,6 +174,7 @@ class RssParser(private val client: OkHttpClient = OkHttpClient.Builder()
             throw FeedFetchException(Kind.ENCODING, e.message ?: "无法按声明编码读取")
         }
 
+        val fetchedAt = System.currentTimeMillis()
         var channelTitle = ""
         var channelLink = ""
         var channelDesc = ""
@@ -176,7 +198,7 @@ class RssParser(private val client: OkHttpClient = OkHttpClient.Builder()
                         tagName = local(parser.name)
                         currentText = StringBuilder()
                         if (tagName.equals("rss", true) || tagName.equals("rdf", true) ||
-                            tagName.equals("RDF", true) || tagName.equals("feed", true)
+            tagName.equals("feed", true)
                         ) {
                             sawFeedRoot = true
                         }
@@ -273,6 +295,10 @@ class RssParser(private val client: OkHttpClient = OkHttpClient.Builder()
                                     if (currentEntry!!.guid.isEmpty()) {
                                         currentEntry = currentEntry!!.copy(guid = currentEntry!!.link ?: sourceUrl + "#" + currentEntry!!.title)
                                     }
+            // 源没有时间时用本次抓取时间
+            if (currentEntry!!.publishedAt == 0L) {
+                currentEntry = currentEntry!!.copy(publishedAt = fetchedAt)
+            }
                                     val cover = enclosureImage
                                         ?: mediaImage
                                         ?: firstImgInHtml(currentEntry!!.content)
@@ -337,42 +363,29 @@ class RssParser(private val client: OkHttpClient = OkHttpClient.Builder()
 
     private fun firstImgInHtml(html: String?): String? {
         if (html.isNullOrBlank()) return null
-        val regex = Regex(
-            """<img[^>]+(?:src|data-src|data-original)=["']([^"']+)["']""",
-            RegexOption.IGNORE_CASE
-        )
-        val match = regex.find(html) ?: return null
-        val src = match.groupValues.getOrNull(1)?.trim().orEmpty()
+        val src = IMG_SRC.find(html)?.groupValues?.getOrNull(1)?.trim().orEmpty()
         return src.takeIf { it.startsWith("http") || it.startsWith("//") }
+            ?.let { if (it.startsWith("//")) "https:$it" else it }
             ?.let { if (it.startsWith("//")) "https:$it" else it }
     }
 
     private fun parseDate(dateStr: String): Long {
-        if (dateStr.isBlank()) return System.currentTimeMillis()
-        return try {
-            val formats = listOf(
-                "EEE, dd MMM yyyy HH:mm:ss Z",
-                "EEE, dd MMM yyyy HH:mm:ss zzz",
-                "yyyy-MM-dd'T'HH:mm:ssXXX",
-                "yyyy-MM-dd'T'HH:mm:ss.SSSXXX",
-                "yyyy-MM-dd'T'HH:mm:ss'Z'",
-                "yyyy-MM-dd'T'HH:mm:ss",
-                "yyyy-MM-dd HH:mm:ss",
-                "yyyy-MM-dd"
-            )
-            for (format in formats) {
-                try {
-                    val sdf = java.text.SimpleDateFormat(format, java.util.Locale.US)
-                    sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
-                    return sdf.parse(dateStr)?.time ?: continue
-                } catch (_: Exception) {}
+        val trimmed = dateStr.trim()
+        if (trimmed.isEmpty()) return 0L
+        // 纯数字时间戳：秒或毫秒
+        trimmed.toLongOrNull()?.let { v ->
+            return if (v < 1_000_000_000_000L) v * 1000 else v
+        }
+        for (format in DATE_PATTERNS) {
+            try {
+                val sdf = java.text.SimpleDateFormat(format, java.util.Locale.US)
+                sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
+                val parsed = sdf.parse(trimmed)
+                if (parsed != null) return parsed.time
+            } catch (_: Exception) {
+                // 换下一个格式
             }
-            dateStr.toLongOrNull()?.let { v ->
-                return if (v < 1_000_000_000_000L) v * 1000 else v
-            }
-            System.currentTimeMillis()
-        } catch (_: Exception) {
-            System.currentTimeMillis()
+        return 0L
         }
     }
 
@@ -447,13 +460,7 @@ class RssParser(private val client: OkHttpClient = OkHttpClient.Builder()
             head.contains("RSSHub 路由", ignoreCase = true)
     }
 
-    private fun isRsshubUrl(url: String): Boolean {
-        val host = runCatching { java.net.URI(url).host }.getOrNull()?.lowercase() ?: return false
-        return host.contains("rsshub") ||
-            host == "succh.zone.id" ||
-            host == "rss.owo.nz" ||
-            host == "hub.slarker.me"
-    }
+    private fun isRsshubUrl(url: String): Boolean = RsshubEndpoints.isRsshubUrl(url, extraHost = rsshubExtraHost)
 
     private fun classifyHttp(code: Int, url: String, body: String): FeedFetchException {
         if (isRsshubUrl(url) || looksLikeRsshubErrorPage(body)) {
@@ -488,10 +495,6 @@ class RssParser(private val client: OkHttpClient = OkHttpClient.Builder()
             .replace("&amp;", "&")
     }
 
-    private fun normalizeUrl(url: String): String {
-        val t = url.trim()
-        return if (t.startsWith("http://") || t.startsWith("https://")) t else "https://$t"
-    }
 
     private fun refererOf(url: String): String {
         return try {

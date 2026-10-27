@@ -87,12 +87,14 @@ fun UniFeedApp(
     if (entry != null) {
         val feed = state.feeds.firstOrNull { it.id == entry.feedId }
         val liveEntry = state.entries.firstOrNull { it.id == entry.id}?: entry
+        // 全文完整性判断要对正文做一次正则去标签，只在条目变化时重算
+        val contentIncomplete = remember(liveEntry) { viewModel.isContentIncomplete(liveEntry) }
         ReaderScreen(
             entry = liveEntry,
             prefs = prefs,
             feedTitle = feed?.title,
             feedFaviconUrl = feed?.faviconUrl,
-            contentIncomplete = viewModel.isContentIncomplete(liveEntry),
+            contentIncomplete = contentIncomplete,
             isLoadingFullContent = state.isLoadingFullContent,
             onLoadFullContent = {
                 viewModel.loadFullContent(liveEntry) { updated -> selectedEntry = updated}
@@ -263,20 +265,23 @@ private fun MainTabScreen(
                     onAddFeed = onAddFeed
                 )
             }
-            2 -> EntryListScreen(
-                entries = state.entries.filter { it.isStarred },
-                feeds = state.feeds,
-                onEntryClick = onEntryClick,
-                onStarToggle = onStarToggle,
-                showSummary = prefs.listShowSummary,
-                modifier = Modifier.padding(padding),
-                onRefresh = onRefresh,
-                isRefreshing = state.isLoading,
-                showFilter = false,
-                filterMode = FilterMode.STARRED,
-                hasLoadedEntries = state.hasLoadedEntries,
-                hasLocalEntries = state.hasLocalEntries
-            )
+            2 -> {
+                val starredEntries = remember(state.entries) { state.entries.filter { it.isStarred } }
+                EntryListScreen(
+                    entries = starredEntries,
+                    feeds = state.feeds,
+                    onEntryClick = onEntryClick,
+                    onStarToggle = onStarToggle,
+                    showSummary = prefs.listShowSummary,
+                    modifier = Modifier.padding(padding),
+                    onRefresh = onRefresh,
+                    isRefreshing = state.isLoading,
+                    showFilter = false,
+                    filterMode = FilterMode.STARRED,
+                    hasLoadedEntries = state.hasLoadedEntries,
+                    hasLocalEntries = state.hasLocalEntries
+                )
+            }
             3 -> SettingsScreen(
                 prefs = prefs,
                 modifier = Modifier.padding(padding),

@@ -14,9 +14,7 @@ data class BuiltinFeed(
     val source: String,
     val description: String = "",
     val failureHint: String? = null
-) {
-    val isRsshub: Boolean get() = url.startsWith("/") || source == "RSSHub"
-}
+)
 
 data class BuiltinCategory(
     val name: String,
@@ -139,7 +137,8 @@ object BuiltinFeeds {
         )
     )
 
-    val all: List<BuiltinFeed> get() = categories.flatMap { it.feeds }
+    /** 扁平全集：目录固定，用 val 只算一次（此前每次访问都重新 flatMap，列表重组时会反复触发） */
+    val all: List<BuiltinFeed> = categories.flatMap { it.feeds }
 
     /**
      * F1-1 修不好的源：保留在精选里，但标注失败分类，禁止静默删除。
@@ -205,6 +204,6 @@ object BuiltinFeeds {
     )
 
     /** 精选目录展示：可用源 + 标注了失败原因的源（不删除） */
-    val displayCategories: List<BuiltinCategory>
-        get() = categories + BuiltinCategory("暂不可用（已标注原因）", unrepaired)
+    val displayCategories: List<BuiltinCategory> =
+        categories + BuiltinCategory("暂不可用（已标注原因）", unrepaired)
 }

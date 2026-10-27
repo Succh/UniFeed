@@ -6,33 +6,12 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface EntryDao {
-    @Query("SELECT * FROM entries WHERE feedId = :feedId ORDER BY publishedAt DESC")
-    fun observeByFeed(feedId: Long): Flow<List<Entry>>
-
     @Query("SELECT * FROM entries ORDER BY publishedAt DESC")
     fun observeAll(): Flow<List<Entry>>
-
-    @Query("SELECT * FROM entries WHERE isRead = 0 ORDER BY publishedAt DESC")
-    fun observeUnread(): Flow<List<Entry>>
-
-    @Query("SELECT * FROM entries WHERE isStarred = 1 ORDER BY publishedAt DESC")
-    fun observeStarred(): Flow<List<Entry>>
-
-    @Query("SELECT * FROM entries WHERE id = :id")
-    suspend fun getById(id: Long): Entry?
-
-    @Query("SELECT * FROM entries WHERE feedId = :feedId AND guid = :guid LIMIT 1")
-    suspend fun getByGuid(feedId: Long, guid: String): Entry?
 
     /** 一次查出该源已有 guid，供刷新路径批量去重 */
     @Query("SELECT guid FROM entries WHERE feedId = :feedId")
     suspend fun getGuidsByFeed(feedId: Long): List<String>
-
-    @Query("SELECT COUNT(*) FROM entries WHERE feedId = :feedId")
-    suspend fun countByFeed(feedId: Long): Int
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insert(entry: Entry): Long
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(entries: List<Entry>)

@@ -66,6 +66,9 @@ private const val READ_COMPLETE_THRESHOLD = 0.95f
 /** 打开后停留多久才标记已读（非「打开即标记」模式） */
 private const val MARK_READ_DWELL_MS = 2000L
 
+/** 图片扩展名判定，WebView 每个子资源请求都会走一遍，故预编译 */
+private val IMAGE_EXT = Regex(".*\\.(png|jpg|jpeg|gif|webp|svg|bmp|ico|avif)(\\?.*)?$", RegexOption.IGNORE_CASE)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -237,7 +240,7 @@ fun ReaderScreen(
                                     request: WebResourceRequest?
                                 ): WebResourceResponse? {
                                     val url = request?.url?.toString() ?: return null
-                                    val isImage = url.matches(Regex(".*\\.(png|jpg|jpeg|gif|webp|svg|bmp|ico|avif)(\\?.*)?$", RegexOption.IGNORE_CASE))
+                                    val isImage = url.matches(IMAGE_EXT)
                                         || url.contains("/img/") || url.contains("/image/")
                                         || url.contains("/images/") || url.contains("/pics/")
                                         || url.contains("mmbiz.") || url.contains("wxing.")

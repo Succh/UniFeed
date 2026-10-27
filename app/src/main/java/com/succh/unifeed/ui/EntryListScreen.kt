@@ -129,6 +129,7 @@ fun EntryListScreen(
     val showSkeleton = filteredEntries.isEmpty() &&
         searchQuery.isBlank() &&
         (!hasLoadedEntries || (isRefreshing && !hasLocalEntries))
+    val hasUnread = remember(entries) { entries.any { !it.isRead } }
 
     CoverPrefetcher(
         entries = filteredEntries,
@@ -176,7 +177,7 @@ fun EntryListScreen(
                         label = { Text("未读") }
                     )
                     Spacer(modifier = Modifier.weight(1f))
-                    if (entries.any { !it.isRead }) {
+                    if (hasUnread) {
                         TextButton(onClick = onMarkAllRead) {
                             Text("全部标为已读")
                         }

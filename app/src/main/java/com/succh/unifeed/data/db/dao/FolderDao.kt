@@ -18,9 +18,6 @@ interface FolderDao {
     @Insert
     suspend fun insert(folder: Folder): Long
 
-    @Delete
-    suspend fun delete(folder: Folder)
-
     @Query("DELETE FROM folders WHERE id = :id")
     suspend fun deleteById(id: Long)
 
