@@ -123,10 +123,6 @@ fun glassChipBorder(selected: Boolean) = FilterChipDefaults.filterChipBorder(
     selectedBorderWidth = GlassTokens.BorderWidth
 )
 
-/** 阅读页底栏：半透明 + 明确的内容色，避免玻璃底上图标发虚 */
-@Composable
-fun glassBottomAppBarColor(): Color = glassBarColor()
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun glassTopAppBarColors(): TopAppBarColors {

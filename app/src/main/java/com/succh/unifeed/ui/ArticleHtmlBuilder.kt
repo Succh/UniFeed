@@ -33,6 +33,8 @@ object ArticleHtmlBuilder {
         justify: Boolean
     ): String {
         val p = palette(theme)
+        // 页面背景透明，让 Compose 玻璃光晕透过来；正文色仍走主题以保证对比度
+        val pageBg = "transparent"
         val fontFamily = if (serif) {
             "Georgia, 'Times New Roman', 'Songti SC', SimSun, serif"
         } else {
@@ -42,12 +44,13 @@ object ArticleHtmlBuilder {
         val imgRule = if (showImages) {
             "img { max-width: 100%; width: 100%; height: auto; display: block; margin: 20px 0; border-radius: 12px; }"
         } else {
-            "img { display: none !important; }"
+            "img { display: none !important; } .hero { display: none !important; }"
         }
         val bodyLh = lineHeight
         return """
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: $fontFamily; font-size: ${fontSize}px; line-height: $bodyLh; color: ${p.fg}; background: ${p.bg}; padding: 16px 20px 48px; word-wrap: break-word; $textAlign -webkit-text-size-adjust: 100%; }
+body { font-family: $fontFamily; font-size: ${fontSize}px; line-height: $bodyLh; color: ${p.fg}; background: $pageBg; padding: 0 0 48px; word-wrap: break-word; $textAlign -webkit-text-size-adjust: 100%; }
+.article { padding: 0 20px 8px; background: linear-gradient(to bottom, ${p.bg}00 0%, ${p.bg}cc 28px, ${p.bg}ee 64px, ${p.bg}f2 100%); }
 $imgRule
 a { color: ${p.link}; text-decoration: none; }
 p { margin: 0 0 1.1em 0; text-indent: 0; line-height: $bodyLh; }
@@ -64,7 +67,9 @@ hr { border: none; border-top: 1px solid ${p.border}; margin: 20px 0; }
 .source-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: ${p.muted}; margin-bottom: 4px; }
 .source-row img.favicon { width: 18px; height: 18px; border-radius: 4px; margin: 0; }
 .byline { font-size: 13px; color: ${p.muted}; margin: 0 0 4px 0; }
-.cover { width: 100%; height: auto; display: block; margin: 16px 0 20px; border-radius: 12px; }
+.hero { position: relative; width: 100%; height: min(38vw, 160px); margin: 0 0 -28px; overflow: hidden; pointer-events: none; }
+.hero img { width: 100%; height: 100%; object-fit: cover; object-position: center; margin: 0; border-radius: 0; opacity: 0.38; display: block; }
+.hero::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(to bottom, ${p.bg}22 0%, ${p.bg}66 48%, ${p.bg} 100%); }
 .orig { display: block; margin: 32px auto 8px; padding: 10px 20px; text-align: center; border: 1px solid ${p.border}; border-radius: 20px; color: ${p.link}; font-size: 15px; }
 """.trimIndent()
     }
@@ -100,8 +105,9 @@ hr { border: none; border-top: 1px solid ${p.border}; margin: 20px 0; }
                 append("<div class='byline'>${parts.joinToString(" · ")}</div>")
             }
         }
-        val cover = if (!coverImageUrl.isNullOrBlank() && prefs.showImages) {
-            "<img class='cover' src='${escapeAttr(coverImageUrl)}' alt='' referrerpolicy='no-referrer'>"
+        // 顶部条幅横幅：半透明融入背景，渐隐到正文，不占用阅读区
+        val hero = if (!coverImageUrl.isNullOrBlank() && prefs.showImages) {
+            "<div class='hero'><img src='${escapeAttr(coverImageUrl)}' alt='' referrerpolicy='no-referrer'></div>"
         } else ""
         val body = normalize(content, link)
         val orig = if (!link.isNullOrBlank()) {
@@ -114,13 +120,15 @@ hr { border: none; border-top: 1px solid ${p.border}; margin: 20px 0; }
 <meta name='referrer' content='no-referrer'>
 <style>${buildCss(prefs.theme, prefs.fontSize, prefs.lineHeight, prefs.showImages, prefs.serifFont, prefs.justifyText)}</style>
 </head><body>
+$hero
+<div class='article'>
 $sourceRow
 <h1 class='headline'>${escape(title)}</h1>
 $byline
 <hr>
-$cover
 $body
 $orig
+</div>
 </body></html>"""
     }
 

@@ -52,6 +52,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.succh.unifeed.data.db.entity.Entry
 import com.succh.unifeed.data.rss.ReaderImageClient
+import com.succh.unifeed.ui.theme.glassBarColor
+import com.succh.unifeed.ui.theme.glassGlowColor
+import com.succh.unifeed.ui.theme.glassHairline
+import com.succh.unifeed.ui.theme.glassTopAppBarColors
 import kotlin.math.abs
 import kotlinx.coroutines.delay
 import okhttp3.Response
@@ -146,6 +150,7 @@ fun ReaderScreen(
     val baseUrl = entry.link?.takeIf { it.startsWith("http") }
 
     Scaffold(
+        containerColor = Color.Transparent,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
@@ -163,7 +168,7 @@ fun ReaderScreen(
                 },
                 actions = {
                     IconButton(onClick = { showAaPanel = true }) {
-                        Icon(Icons.Filled.FormatSize, contentDescription = "阅读设置", tint = colors.onSurfaceVariant)
+                        Icon(Icons.Filled.FormatSize, contentDescription = "阅读设置", tint = colors.onSurface)
                     }
                     IconButton(onClick = {
                         starred = !starred
@@ -172,7 +177,7 @@ fun ReaderScreen(
                         Icon(
                             if (starred) Icons.Filled.Star else Icons.Filled.StarBorder,
                             contentDescription = "收藏",
-                            tint = if (starred) Color(0xFFFFB300) else colors.onSurfaceVariant
+                            tint = if (starred) Color(0xFFFFB300) else colors.onSurface
                         )
                     }
                     IconButton(onClick = { onShare(entry) }) {
@@ -181,11 +186,16 @@ fun ReaderScreen(
                     IconButton(onClick = { onOpenBrowser(entry) }) {
                         Icon(Icons.Filled.OpenInBrowser, contentDescription = "浏览器打开")
                     }
-                }
+                },
+                colors = glassTopAppBarColors()
             )
         },
         bottomBar = {
-            BottomAppBar {
+            BottomAppBar(
+                containerColor = glassBarColor(),
+                contentColor = colors.onSurface,
+                modifier = Modifier.glassHairline(glassGlowColor())
+            ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()

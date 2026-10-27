@@ -59,7 +59,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -579,7 +578,7 @@ private fun EntryItem(
     onStar: () -> Unit
 ) {
     val colors = MaterialTheme.colorScheme
-    val cardAlpha = if (entry.isRead) 0.6f else 1f
+    // 已读只用字重区分，避免整卡半透明导致玻璃底上文字发灰
     val imageUrl = entry.imageUrl
     var showThumb by remember(entry.id, imageUrl) { mutableStateOf(!imageUrl.isNullOrBlank()) }
     val context = LocalContext.current
@@ -603,9 +602,7 @@ private fun EntryItem(
 
     Card(
         onClick = onClick,
-        modifier = Modifier
-            .fillMaxWidth()
-            .alpha(cardAlpha),
+        modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(FoloDimens.CardRadius),
         colors = glassCardColors(),
         border = glassCardBorder(),
