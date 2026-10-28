@@ -121,4 +121,8 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 
     testImplementation("junit:junit:4.13.2")
+    // android.jar 里的 org.xmlpull.v1.* 和 org.json.* 只是抛 "not mocked" 的空壳桩类，
+    // JVM 单测跑 RssParser / RsshubCatalog 时需要真实实现来替它们
+    testImplementation("net.sf.kxml:kxml2:2.3.0")
+    testImplementation("org.json:json:20240303")
 }
