@@ -168,10 +168,14 @@ fun DiscoverScreen(
         )
     }
 
+    // 这三个是 delegated var (MutableStateOf)，Kotlin 不能 smart cast，取一次本地不可变副本代替 !!
+    val selectedPreset = presetCat
+    val selectedCat = rsshubCat
+    val selectedNs = rsshubNs
     val titleText = when {
-        rsshubNs != null -> rsshubNs!!.name
-        rsshubCat != null -> RsshubCatalog.labelOf(rsshubCat!!)
-        presetCat != null -> presetCat!!.name
+    selectedNs != null -> selectedNs.name
+    selectedCat != null -> RsshubCatalog.labelOf(selectedCat)
+    selectedPreset != null -> selectedPreset.name
         else -> "添加订阅"
     }
 
@@ -197,7 +201,7 @@ fun DiscoverScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            if (presetCat == null && rsshubCat == null && rsshubNs == null && activeTab != 2) {
+    if (selectedPreset == null && selectedCat == null && selectedNs == null && activeTab != 2) {
                 OutlinedTextField(
                     value = query,
                     onValueChange = { query = it },
@@ -210,7 +214,7 @@ fun DiscoverScreen(
                 )
             }
 
-            if (presetCat == null && rsshubCat == null && rsshubNs == null && (query.isBlank() || activeTab == 2)) {
+    if (selectedPreset == null && selectedCat == null && selectedNs == null && (query.isBlank() || activeTab == 2)) {
                 TabRow(selectedTabIndex = activeTab) {
                     Tab(selected = activeTab == 0, onClick = { activeTab = 0 }) {
                         Text("精选目录", Modifier.padding(vertical = 8.dp))
@@ -259,7 +263,7 @@ fun DiscoverScreen(
             }
 
             when {
-                query.isNotBlank() && activeTab != 2 && presetCat == null && rsshubCat == null && rsshubNs == null -> {
+    query.isNotBlank() && activeTab != 2 && selectedPreset == null && selectedCat == null && selectedNs == null -> {
                     SearchResults(
                         query = query,
                         namespaces = rsshubNamespaces,
@@ -286,9 +290,9 @@ fun DiscoverScreen(
                     )
                 }
 
-                presetCat != null -> {
+    selectedPreset != null -> {
                     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 4.dp)) {
-                        items(presetCat!!.feeds, key = { it.url + it.title }) { feed ->
+    items(selectedPreset.feeds, key = { it.url + it.title }) { feed ->
                             BuiltinFeedRow(feed) {
                                 if (feed.failureHint == null) onSubscribe(feed.url, feed.title)
                             }
@@ -296,11 +300,14 @@ fun DiscoverScreen(
                     }
                 }
 
-                rsshubNs != null -> {
-                    val shown = rsshubNs!!.routes.filter { route ->
-                        val cat = rsshubCat
-                        cat == null || cat in route.categories || cat in rsshubNs!!.categories
-                    }
+    selectedNs != null -> {
+        val shown = remember(selectedNs, selectedCat) {
+            selectedNs.routes.filter { route ->
+                selectedCat == null ||
+                    selectedCat in route.categories ||
+                    selectedCat in selectedNs.categories
+            }
+        }
                     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 4.dp)) {
                         items(shown, key = { it.path + it.title }) { route ->
                             RouteRow(
@@ -323,17 +330,22 @@ fun DiscoverScreen(
                     }
                 }
 
-                rsshubCat != null -> {
-                    val nss = rsshubNamespaces.filter { ns ->
-                        rsshubCat!! in ns.categories || ns.routes.any { rsshubCat!! in it.categories }
-                    }
+    selectedCat != null -> {
+        val nss = remember(rsshubNamespaces, selectedCat) {
+            rsshubNamespaces.filter { namespace ->
+                selectedCat in namespace.categories ||
+                    namespace.routes.any { selectedCat in it.categories }
+            }
+        }
                     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 4.dp)) {
-                        items(nss, key = { it.id }) { ns ->
-                            val count = ns.routes.count { rsshubCat!! in it.categories || rsshubCat!! in ns.categories }
+    items(nss, key = { it.id }) { namespace ->
+        val count = namespace.routes.count {
+            selectedCat in it.categories || selectedCat in namespace.categories
+        }
                             CategoryCard(
-                                title = ns.name,
-                                subtitle = "$count 条路由 · ${ns.id}",
-                                onClick = { rsshubNs = ns }
+        title = namespace.name,
+        subtitle = "$count 条路由 · ${namespace.id}",
+        onClick = { rsshubNs = namespace }
                             )
                         }
                     }
@@ -394,13 +406,17 @@ private fun SearchResults(
     onDoc: (RsshubDocRoute) -> Unit
 ) {
     val q = query.trim()
-    val builtinHits = BuiltinFeeds.all.filter {
-        it.title.contains(q, true) || it.category.contains(q, true) || it.url.contains(q, true)
+    val builtinHits = remember(q) {
+        BuiltinFeeds.all.filter {
+            it.title.contains(q, true) || it.category.contains(q, true) || it.url.contains(q, true)
+        }
     }
-    val presetHits = RsshubPresets.allRoutes.filter { (cat, route) ->
-        route.title.contains(q, true) || cat.contains(q, true) || route.path.contains(q, true)
+    val presetHits = remember(q) {
+        RsshubPresets.allRoutes.filter { (cat, route) ->
+            route.title.contains(q, true) || cat.contains(q, true) || route.path.contains(q, true)
+        }
     }
-    val docHits = RsshubCatalog.search(namespaces, q)
+    val docHits = remember(namespaces, q) { RsshubCatalog.search(namespaces, q) }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 4.dp)) {
         if (builtinHits.isEmpty() && presetHits.isEmpty() && docHits.isEmpty()) {
@@ -465,13 +481,15 @@ private fun RsshubBrowsePane(
                 TextButton(onClick = onRetry) { Text("重试") }
             }
             else -> {
-                val grouped = namespaces
-                    .flatMap { ns ->
-                        val cats = (ns.categories + ns.routes.flatMap { it.categories }).distinct()
-                        cats.map { it to ns }
-                    }
-                    .groupBy({ it.first }, { it.second })
-                    .toSortedMap(compareBy { RsshubCatalog.labelOf(it) })
+    val grouped = remember(namespaces) {
+        namespaces
+            .flatMap { ns ->
+                val cats = (ns.categories + ns.routes.flatMap { it.categories }).distinct()
+                cats.map { it to ns }
+            }
+            .groupBy({ it.first }, { it.second })
+            .toSortedMap(compareBy { RsshubCatalog.labelOf(it) })
+    }
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 8.dp)) {
                     grouped.forEach { (cat, nss) ->
                         item(key = cat) {

@@ -15,7 +15,8 @@ data class ParsedEntry(
     val content: String? = null,
     val summary: String? = null,
     val author: String? = null,
-    val publishedAt: Long = System.currentTimeMillis(),
+    /** 0 表示源里没给出或解析失败，由抓取层兜底为抓取时间 */
+    val publishedAt: Long = 0L,
     val imageUrl: String? = null
 )
 

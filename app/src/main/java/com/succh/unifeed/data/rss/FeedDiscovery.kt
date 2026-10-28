@@ -42,7 +42,7 @@ class FeedDiscovery(
 
             // 1. 扫描 <link rel="alternate" type="application/rss+xml|atom+xml">
             doc.select("link").forEach { link ->
-                val rels = link.attr("rel").lowercase().split(Regex("\\s+"))
+                val rels = link.attr("rel").lowercase().split(WHITESPACE)
                 if ("alternate" in rels) {
                     val type = link.attr("type").lowercase()
                     val href = link.absUrl("href")
@@ -95,9 +95,8 @@ class FeedDiscovery(
 
     /** 规范化输入，返回 (origin, 页面完整地址) */
     private fun parseBase(raw: String): Pair<String, String>? {
-        var s = raw.trim()
-        if (s.isEmpty()) return null
-        if (!s.startsWith("http://") && !s.startsWith("https://")) s = "https://$s"
+        if (raw.isBlank()) return null
+        val s = FeedUrls.withScheme(raw)
         return try {
             val uri = java.net.URI(s)
             val host = uri.host?.lowercase() ?: return null
@@ -120,7 +119,8 @@ class FeedDiscovery(
         origin.removePrefix("https://").removePrefix("http://").substringBefore(':').substringBefore('/')
 
     private companion object {
-        const val UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        const val UA = UserAgents.DESKTOP
         val COMMON_PATHS = listOf("/feed", "/rss", "/rss.xml", "/atom.xml", "/feed.xml", "/index.xml")
+        val WHITESPACE = Regex("\\s+")
     }
 }

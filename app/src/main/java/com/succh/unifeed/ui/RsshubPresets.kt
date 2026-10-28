@@ -11,8 +11,7 @@ data class RsshubRoute(
     val description: String = "",
     val defaultParam: String = ""
 ) {
-    /** 兼容旧字段名：完整 URL 在订阅时由实例地址拼接 */
-    val url: String get() = path
+    /** 是否还需要用户补参数：有说明但没有默认值 */
     val needsParam: Boolean get() = description.isNotBlank() && defaultParam.isBlank()
 }
 
@@ -23,9 +22,6 @@ data class RsshubCategory(
 )
 
 object RsshubPresets {
-
-    val allRoutes: List<Pair<String, RsshubRoute>>
-        get() = categories.flatMap { cat -> cat.routes.map { cat.name to it } }
 
     fun resolve(instance: String, route: RsshubRoute, extra: String = ""): String {
         val base = instance.trim().trimEnd('/')
@@ -98,4 +94,8 @@ object RsshubPresets {
             RsshubRoute("财新周刊", "/caixin/weekly")
         ))
     )
+
+    /** 扁平化 (分类, 路由) 全集：目录固定，只算一次，避免每次搜索都重建 */
+    val allRoutes: List<Pair<String, RsshubRoute>> =
+        categories.flatMap { cat -> cat.routes.map { cat.name to it } }
 }

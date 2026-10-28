@@ -38,8 +38,7 @@ object ReaderImageClient {
      * 按图片域名映射 Referer；未命中返回 null，调用方不得设置空 Referer 头。
      */
     fun mappedReferer(imageUrl: String): String? {
-        val host = runCatching { android.net.Uri.parse(imageUrl).host }.getOrNull()?.lowercase()
-            ?: return null
+        val host = FeedUrls.hostOf(imageUrl) ?: return null
         return when {
             host.contains("sinaimg.cn") -> "https://weibo.com"
             host.contains("mmbiz.qpic.cn") || host.contains("wximg") -> "https://mp.weixin.qq.com"
@@ -52,7 +51,7 @@ object ReaderImageClient {
     fun imageRequest(url: String, referer: String?): Request {
         val builder = Request.Builder()
             .url(url)
-            .header("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
+            .header("User-Agent", UserAgents.MOBILE)
             .header("Accept", "image/avif,image/webp,image/png,image/*,*/*;q=0.8")
             .header("Accept-Language", "zh-CN,zh;q=0.9")
         if (!referer.isNullOrBlank()) {

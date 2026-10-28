@@ -36,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.succh.unifeed.data.rss.RsshubEndpoints
 import com.succh.unifeed.data.work.RefreshWorker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -43,15 +44,8 @@ import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URL
 
-/** 预设的公共 RSSHub 实例（首个为默认自建实例） */
-private val RSSHUB_PRESETS = listOf(
-    "https://succh.zone.id",
-    "https://rsshub.app",
-    "https://rsshub.cups.moe",
-    "https://rss.owo.nz",
-    "https://hub.slarker.me",
-    "https://rsshub.rssforever.com"
-)
+/** 公共实例快捷选择：直接取自抓取层的镜像清单，顺序即竞速优先级 */
+private val RSSHUB_PRESETS = RsshubEndpoints.MIRRORS
 
 /** 设置 Tab：列表设置、RSSHub 实例配置、关于。 */
 @Composable
@@ -196,20 +190,14 @@ fun SettingsScreen(
         }
 
         Text("公共实例快捷选择", style = MaterialTheme.typography.labelMedium)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            RSSHUB_PRESETS.take(3).forEach { preset ->
-                AssistChip(
-                    onClick = { applyInstance(preset) },
-                    label = { Text(preset.removePrefix("https://")) }
-                )
-            }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            RSSHUB_PRESETS.drop(3).forEach { preset ->
-                AssistChip(
-                    onClick = { applyInstance(preset) },
-                    label = { Text(preset.removePrefix("https://")) }
-                )
+        RSSHUB_PRESETS.chunked(3).forEach { rowPresets ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                rowPresets.forEach { preset ->
+                    AssistChip(
+                        onClick = { applyInstance(preset) },
+                        label = { Text(preset.removePrefix("https://")) }
+                    )
+                }
             }
         }
 

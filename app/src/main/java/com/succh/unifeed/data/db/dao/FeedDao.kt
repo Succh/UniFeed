@@ -15,9 +15,6 @@ interface FeedDao {
     @Query("SELECT * FROM feeds WHERE url = :url LIMIT 1")
     suspend fun getByUrl(url: String): Feed?
 
-    @Query("SELECT * FROM feeds WHERE folderId = :folderId")
-    suspend fun getByFolder(folderId: Long): List<Feed>
-
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(feed: Feed): Long
 
@@ -26,9 +23,6 @@ interface FeedDao {
 
     @Delete
     suspend fun delete(feed: Feed)
-
-    @Query("DELETE FROM feeds WHERE id = :id")
-    suspend fun deleteById(id: Long)
 
     @Query("UPDATE feeds SET unreadCount = (SELECT COUNT(*) FROM entries WHERE feedId = :feedId AND isRead = 0) WHERE id = :feedId")
     suspend fun updateUnreadCount(feedId: Long)

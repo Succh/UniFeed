@@ -33,11 +33,16 @@ data class RsshubDocRoute(
 /** 去掉可选段后再看是否还剩 :param，避免把 `:id?` 当成必选 */
 private val OPTIONAL_PARAM = Regex(""":[A-Za-z_][\w.]*\?""")
 private val BARE_PARAM = Regex(""":[A-Za-z_][\w.]*""")
+private val REPEATED_SLASH = Regex("/{2,}")
+private val WHITESPACE = Regex("\\s+")
 
 private fun stripOptional(path: String): String =
-    path.replace(OPTIONAL_PARAM, "").replace(Regex("/{2,}"), "/").trimEnd('/')
+    path.replace(OPTIONAL_PARAM, "").replace(REPEATED_SLASH, "/").trimEnd('/')
 
 private fun hasRequiredParam(path: String): Boolean = BARE_PARAM.containsMatchIn(stripOptional(path))
+
+/** 去掉可选段后还剩几个必选 :param：只有恰好 1 个时才能用用户输入替换的把它 */
+private fun requiredParamCount(path: String): Int = BARE_PARAM.findAll(stripOptional(path)).count()
 
 /**
  * 从 RSSHub 实例的 /api/namespace 拉取路由库（与 docs.rsshub.app 同源数据）。
@@ -90,15 +95,10 @@ class RsshubCatalog(
     }
 
     companion object {
-        private const val UA =
-            "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+        private const val UA = UserAgents.MOBILE
 
-        val FALLBACK_INSTANCES = listOf(
-            "https://succh.zone.id",
-            "https://rsshub.rssforever.com",
-            "https://hub.slarker.me",
-            "https://rsshub.app"
-        )
+        /** 兜底实例与 [RsshubEndpoints] 共用，避免和抓取镜像清单漂移 */
+        val FALLBACK_INSTANCES: List<String> = RsshubEndpoints.CATALOG_FALLBACKS
 
         val CATEGORY_LABELS = mapOf(
             "social-media" to "社交媒体",
@@ -199,7 +199,7 @@ class RsshubCatalog(
                 val desc = when (v) {
                     is JSONObject -> v.optString("description")
                     else -> v?.toString().orEmpty()
-                }.replace(Regex("\\s+"), " ").trim()
+                }.replace(WHITESPACE, " ").trim()
                 if (desc.isNotEmpty()) parts += "$key: ${desc.take(80)}"
                 else parts += key
             }
@@ -221,7 +221,8 @@ class RsshubCatalog(
             val extra = extraParam.trim().trim('/')
             val path = when {
                 extra.isEmpty() -> route.example.ifBlank { route.path }
-                route.example.isNotBlank() && !route.example.contains(':') ->
+                route.example.isNotBlank() && !route.example.contains(':') &&
+                    requiredParamCount(route.path) != 1 ->
                     route.example.trimEnd('/') + "/" + extra
                 else -> fillRequiredParam(route.path, extra)
             }

@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import com.succh.unifeed.data.rss.RsshubEndpoints
 
 enum class ReaderTheme { LIGHT, SEPIA, DARK }
 
@@ -93,7 +94,7 @@ class ReaderPrefs(context: Context) {
 
     /** 当前生效的 RSSHub 实例：用户自定义 > 默认自建实例 */
     val effectiveRsshubInstance: String
-        get() = rsshubInstance ?: DEFAULT_RSSHUB_INSTANCE
+        get() = rsshubInstance ?: RsshubEndpoints.DEFAULT
 
     /** 后台自动刷新开关 */
     private val _autoRefreshEnabled = mutableStateOf(sp.getBoolean(KEY_AUTO_REFRESH_ENABLED, false))
@@ -138,8 +139,5 @@ class ReaderPrefs(context: Context) {
         const val KEY_RSSHUB_INSTANCE = "rsshub_instance"
         const val KEY_AUTO_REFRESH_ENABLED = "auto_refresh_enabled"
         const val KEY_AUTO_REFRESH_INTERVAL_HOURS = "auto_refresh_interval_hours"
-
-        /** 默认自建 RSSHub 实例 */
-        const val DEFAULT_RSSHUB_INSTANCE = "https://succh.zone.id"
     }
 }

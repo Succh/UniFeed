@@ -3,7 +3,6 @@ package com.succh.unifeed.data.rss
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import org.jsoup.select.Elements
 
 /**
  * 文章正文提取器
@@ -16,13 +15,8 @@ object ContentExtractor {
      */
     fun extract(html: String): String {
         return try {
-            val candidate = findMainContent(Jsoup.parse(html))
-            if (candidate != null) {
-                candidate.html()
-            } else {
-                val bodyHtml = Jsoup.parse(html).body()?.html()
-                if (bodyHtml != null) bodyHtml else html
-            }
+            val doc = Jsoup.parse(html)
+            (findMainContent(doc) ?: doc.body())?.html() ?: html
         } catch (_: Exception) {
             html
         }
@@ -63,7 +57,7 @@ object ContentExtractor {
             }
         }
 
-        return if (best != null && bestScore > 20) cleanNode(best!!) else null
+        return if (best != null && bestScore > 20) cleanNode(best) else null
     }
 
     /**
@@ -80,7 +74,8 @@ object ContentExtractor {
         score += Math.min(textLen / 100.0, 10.0)
         score += pCount * 1.5
         score += Math.min(commas / 5.0, 5.0)
-        score -= Math.min(linkLen / textLen * 2, 5.0) // 链接密度惩罚
+        // 链接密度惩罚；正文为空时不做除法，避免 NaN 污染总分
+        if (textLen > 0.0) score -= Math.min(linkLen / textLen * 2, 5.0)
 
         // 标签加分
         val id = el.id().lowercase()

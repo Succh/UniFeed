@@ -5,14 +5,17 @@ import com.succh.unifeed.data.db.entity.Entry
 import com.succh.unifeed.data.db.entity.Feed
 import com.succh.unifeed.data.db.entity.Folder
 import com.succh.unifeed.data.model.FeedPreview
+import com.succh.unifeed.data.model.ParsedEntry
 import com.succh.unifeed.data.model.ParsedFeed
 import com.succh.unifeed.data.opml.OpmlFeed
 import com.succh.unifeed.data.rss.ContentExtractor
 import com.succh.unifeed.data.rss.DiscoveredFeed
 import com.succh.unifeed.data.rss.FeedDiscovery
 import com.succh.unifeed.data.rss.FeedFetchException
+import com.succh.unifeed.data.rss.FeedUrls
 import com.succh.unifeed.data.rss.RssParser
 import com.succh.unifeed.data.rss.RsshubCatalog
+import com.succh.unifeed.data.rss.RsshubEndpoints
 import com.succh.unifeed.data.rss.RsshubNamespace
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
@@ -22,10 +25,6 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
 
 /**
@@ -40,40 +39,28 @@ class FeedRepository(
     private val feedDao = db.feedDao()
     private val entryDao = db.entryDao()
     private val folderDao = db.folderDao()
-    private val bgScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /**
-     * 后台抓取失败时向 UI 暴露错误信息，避免静默吞掉异常。
+     * 后台抓取失败时向 UI 暴露错误信息，避免静默丢掉异常。
      * extraBufferCapacity 保证暂时没有订阅者也能暂存错误。
      */
     private val _fetchErrors = MutableSharedFlow<String>(extraBufferCapacity = 8)
     val fetchErrors: SharedFlow<String> = _fetchErrors.asSharedFlow()
 
     /**
-     * 可配置的自定义 RSSHub 实例地址（用户在设置页填写）。
-     * 非空时会插入镜像组首位优先使用；失败仍自动回退公共镜像。
+     * 可配置的自定义 RSSHub 实例地址（用户在设置项填写）。
+     * 非空时会插入镜像组首位优先使用；失败仍自动退回公共镜像。
      */
     @Volatile
     var customRsshubInstance: String? = null
         set(value) {
             field = value?.trim()?.trimEnd('/')?.takeIf { it.isNotEmpty() }
-        }
-
-    /**
-     * 已知 RSSHub 实例域名（官方 + 公共镜像 + 用户自定义）。
-     * 用于判断一个 URL 是否属于 RSSHub 源。
-     */
-    private val knownRsshubHosts: List<String>
-        get() = buildList {
-            add("rsshub.app")
-            addAll(PUBLIC_MIRRORS.map { it.removePrefix("https://").removePrefix("http://") })
-            customRsshubInstance?.let { inst ->
-                runCatching { android.net.Uri.parse(inst).host }.getOrNull()?.let { add(it) }
-            }
+            // 抓取层做错误分类时要用同一个口径，否则自定义实例的失败会被归成普通 HTTP
+            parser.rsshubExtraHost = field?.let(FeedUrls::hostOf)
         }
 
     /** 当前用于拼接相对路径的 RSSHub 实例 */
-    fun effectiveRsshubInstance(): String = customRsshubInstance ?: RSSHUB_DEFAULT
+    fun effectiveRsshubInstance(): String = customRsshubInstance ?: RsshubEndpoints.DEFAULT
 
     /**
      * 把相对 RSSHub 路径（如 `/zhihu/hot`）或完整 URL 规范成可订阅地址。
@@ -92,16 +79,12 @@ class FeedRepository(
         }
     }
 
-    private fun isRsshubUrl(url: String): Boolean {
-        return runCatching { android.net.Uri.parse(url).host }.getOrNull()
-            ?.let { host -> knownRsshubHosts.any { it.equals(host, ignoreCase = true) } } ?: false
-    }
+    /** 是否 RSSHub 源：内置镜像清单之外还认用户自定义实例。UI 也据此选择订阅路径 */
+    fun isRsshubUrl(url: String): Boolean =
+        RsshubEndpoints.isRsshubUrl(url, extraHost = customRsshubInstance?.let(FeedUrls::hostOf))
 
     fun observeFeeds(): Flow<List<Feed>> = feedDao.observeAll()
-    fun observeEntries(feedId: Long): Flow<List<Entry>> = entryDao.observeByFeed(feedId)
     fun observeAllEntries(): Flow<List<Entry>> = entryDao.observeAll()
-    fun observeUnreadEntries(): Flow<List<Entry>> = entryDao.observeUnread()
-    fun observeStarredEntries(): Flow<List<Entry>> = entryDao.observeStarred()
     fun observeUnreadCount(): Flow<Int> = entryDao.observeUnreadCount()
 
     suspend fun discoverFeeds(input: String): Result<List<DiscoveredFeed>> {
@@ -184,8 +167,9 @@ class FeedRepository(
     }
 
     /**
-     * 即时添加订阅源（Folo 式）：先存 URL 和标题到数据库，立即返回成功；
-     * 后台异步 fetch 文章内容。用户无需等待网络请求。
+     * 即时添加订阅源（Folo 式）：只写 URL 与推断标题，立即返回，不做网络请求。
+     * 首次抓取由调用方走 [refreshFeed]，元数据在那里补齐，避免同一路由被并发发两次
+     * （历史问题：即时订阅的后台抓取与 UI 的刷新同时写库，guid 去重集合各自读到空，可能重复入库）。
      */
     suspend fun addFeedInstant(url: String, titleHint: String? = null): Result<Feed> {
         return try {
@@ -194,64 +178,25 @@ class FeedRepository(
             if (existing != null) {
                 return Result.success(existing)
             }
-            val inferredTitle = titleHint ?: inferTitleFromUrl(resolvedUrl)
             val newFeed = Feed(
-                title = inferredTitle,
+                title = titleHint ?: inferTitleFromUrl(resolvedUrl),
                 url = resolvedUrl,
                 siteUrl = null,
                 description = "",
                 faviconUrl = ""
             )
-            val newId = feedDao.insert(newFeed)
-            val savedFeed = newFeed.copy(id = newId)
-            bgScope.launch {
-                try {
-                    val (parsed, actualUrl) = fetchWithSmartFallback(resolvedUrl)
-                    val now = System.currentTimeMillis()
-                    feedDao.update(savedFeed.copy(
-                        title = parsed.title.ifEmpty { inferredTitle },
-                        siteUrl = parsed.siteUrl,
-                        description = parsed.description,
-                        faviconUrl = buildFaviconUrl(parsed.siteUrl ?: actualUrl),
-                        url = actualUrl,
-                        lastUpdated = now,
-                        lastRefreshTime = now,
-                        lastRefreshError = null
-                    ))
-                    saveEntries(newId, parsed)
-                    feedDao.updateUnreadCount(newId)
-                } catch (e: Exception) {
-                    runCatching {
-                        val current = feedDao.getById(newId) ?: savedFeed
-                        feedDao.update(
-                            current.copy(
-                                lastUpdated = System.currentTimeMillis(),
-                                lastRefreshTime = System.currentTimeMillis(),
-                                lastRefreshError = e.message ?: "未知错误"
-                            )
-                        )
-                    }
-                    _fetchErrors.emit("订阅源「${savedFeed.title}」抓取失败: ${e.message ?: "未知错误"}")
-                }
-            }
-            Result.success(savedFeed)
+            Result.success(newFeed.copy(id = feedDao.insert(newFeed)))
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
     private fun inferTitleFromUrl(url: String): String {
-        return try {
-            val uri = android.net.Uri.parse(url)
-            val path = uri.path?.trim('/') ?: ""
-            if (isRsshubUrl(url) && path.isNotEmpty()) {
-                val parts = path.split("/")
-                parts.takeLast(2).joinToString("/")
-            } else {
-                uri.host ?: url
-            }
-        } catch (_: Exception) {
-            url
+        val path = FeedUrls.pathOf(url).trim('/')
+        return if (isRsshubUrl(url) && path.isNotEmpty()) {
+            path.split("/").takeLast(2).joinToString("/")
+        } else {
+            FeedUrls.hostOf(url) ?: url
         }
     }
 
@@ -261,18 +206,15 @@ class FeedRepository(
      */
     private suspend fun fetchWithSmartFallback(url: String): Pair<ParsedFeed, String> {
         val resolved = resolveFeedUrl(url)
-        if (!isRsshubUrl(resolved)) {
-            return try {
-                val parsed = parser.fetch(resolved)
-                if (parsed.entries.isEmpty()) {
-                    throw FeedFetchException(FeedFetchException.Kind.EMPTY, "源可访问但没有文章")
-                }
-                parsed to resolved
+        if (isRsshubUrl(resolved)) {
+            val parsed = try {
+                parser.fetch(resolved)
             } catch (e: FeedFetchException) {
                 throw e
             } catch (e: Exception) {
                 throw FeedFetchException(FeedFetchException.Kind.NETWORK, e.message ?: "源抓取失败")
             }
+            return requireArticles(parsed, resolved)
         }
 
         val path = extractRsshubPath(resolved)
@@ -280,18 +222,20 @@ class FeedRepository(
             throw FeedFetchException(FeedFetchException.Kind.RSSHUB, "无效的 RSSHub URL")
         }
 
-        val mirrorGroup = getMirrorForRoute(path)
-        val candidates = (mirrorGroup.map { buildRsshubUrl(it, path) } + resolved).distinct()
+        val candidates = (mirrorCandidates().map { "$it/$path" } + resolved).distinct()
+        val winner = raceFetch(candidates) ?: throw FeedFetchException(
+            FeedFetchException.Kind.RSSHUB,
+            "所有镜像均不可用，该路由可能暂不支持"
+        )
+        return requireArticles(winner.first, winner.second)
+    }
 
-        val winner = raceFetch(candidates)
-        if (winner != null) {
-            if (winner.first.entries.isEmpty()) {
-                throw FeedFetchException(FeedFetchException.Kind.EMPTY, "源可访问但没有文章")
-            }
-            return winner
+    /** 源可访问但零文章，两条抓取分支共用同一分类 */
+    private fun requireArticles(parsed: ParsedFeed, url: String): Pair<ParsedFeed, String> {
+        if (parsed.entries.isEmpty()) {
+            throw FeedFetchException(FeedFetchException.Kind.EMPTY, "源可访问但没有文章")
         }
-
-        throw FeedFetchException(FeedFetchException.Kind.RSSHUB, "所有镜像均不可用，该路由可能暂不支持")
+        return parsed to url
     }
 
     /**
@@ -336,32 +280,16 @@ class FeedRepository(
         }
     }
 
-    /**
-     * 根据路由前缀返回镜像组（顺序越前优先级越高）
-     */
-    private fun getMirrorForRoute(path: String): List<String> {
-            val routeBased = listOf(
-            RSSHUB_DEFAULT, RSSHUB_RSSFOREVER, RSSHUB_SLARKER, RSSHUB_CUPS, RSSHUB_OWO, RSSHUB_OFFICIAL
-        )
-        return customRsshubInstance?.let { listOf(it) + routeBased.filter { m -> m != it } } ?: routeBased
+    /** 竞速镜像组：用户自定义实例优先，其余按 [RsshubEndpoints.MIRRORS] 顺序兜底 */
+    private fun mirrorCandidates(): List<String> {
+        val custom = customRsshubInstance ?: return RsshubEndpoints.MIRRORS
+        return listOf(custom) + RsshubEndpoints.MIRRORS.filterNot { it == custom }
     }
 
+    /** RSSHub 路由路径（去掉实例前缀 '/rsshub' 与首尾斜杠） */
     private fun extractRsshubPath(url: String): String {
-        try {
-            val uri = android.net.Uri.parse(url)
-            val path = uri.path?.trim('/') ?: ""
-            return if (path.startsWith("rsshub")) {
-                path.removePrefix("rsshub").trimStart('/')
-            } else {
-                path
-            }
-        } catch (_: Exception) {
-            return ""
-        }
-    }
-
-    private fun buildRsshubUrl(mirror: String, path: String): String {
-        return "$mirror/$path"
+        val path = FeedUrls.pathOf(url).trim('/')
+        return if (path.startsWith("rsshub")) path.removePrefix("rsshub").trimStart('/') else path
     }
 
     suspend fun refreshFeed(feedId: Long) {
@@ -370,12 +298,28 @@ class FeedRepository(
             val (parsed, _) = fetchWithSmartFallback(feed.url)
             saveEntries(feed.id, parsed)
             val now = System.currentTimeMillis()
+            // 重读一次，避免抓取期间用户的改名/移动被旧快照覆盖
+            val current = feedDao.getById(feedId) ?: feed
+            val missingMetadata = current.siteUrl.isNullOrBlank() && current.faviconUrl.isNullOrBlank()
             feedDao.update(
-                feed.copy(
-                    lastUpdated = now,
-                    lastRefreshTime = now,
-                    lastRefreshError = null
-                )
+                if (missingMetadata) {
+                    // 即时订阅只写了 URL，首次抓取补充元数据；此后不再覆盖用户改名
+                    current.copy(
+                        title = parsed.title.ifEmpty { current.title },
+                        siteUrl = parsed.siteUrl,
+                        description = parsed.description?.takeIf { it.isNotBlank() } ?: current.description,
+                        faviconUrl = buildFaviconUrl(parsed.siteUrl ?: current.url),
+                        lastUpdated = now,
+                        lastRefreshTime = now,
+                        lastRefreshError = null
+                    )
+                } else {
+                    current.copy(
+                        lastUpdated = now,
+                        lastRefreshTime = now,
+                        lastRefreshError = null
+                    )
+                }
             )
             feedDao.updateUnreadCount(feed.id)
         } catch (e: Exception) {
@@ -390,7 +334,7 @@ class FeedRepository(
                     )
                 )
             }
-            _fetchErrors.emit("刷新「${feed.title}」失败: $reason")
+            _fetchErrors.emit("刷新「${feed.title}」失败：$reason")
         }
     }
 
@@ -437,7 +381,7 @@ class FeedRepository(
     }
 
     /**
-     * 按需抓取原文：复用 ContentExtractor，成功后写回 Entry.content。
+     * 按需抓取原文：复用 ContentExtractor，成功后写回 Entry.content，
      */
     suspend fun loadFullContent(entry: Entry): Result<Entry> {
         val link = entry.link
@@ -460,8 +404,7 @@ class FeedRepository(
 
     /** 判断 RSS 内容是否只有摘要（长度过短视为不完整） */
     fun isContentIncomplete(entry: Entry): Boolean {
-        val content = entry.content ?: entry.summary ?: ""
-        val plain = content.replace(Regex("<[^>]+>"), "").trim()
+        val plain = stripTags(entry.content ?: entry.summary ?: "")
         return plain.length < 400 && !entry.link.isNullOrBlank()
     }
 
@@ -503,7 +446,7 @@ class FeedRepository(
     /**
      * OPML 批量导入：按 URL 去重，已存在的跳过；
      * 有文件夹名的先建文件夹再关联，无文件夹名的平铺导入。
-     * 返回 Pair(成功导入数, 跳过数)。
+     * 返回 Pair(成功导入数，跳过数)。
      */
     suspend fun importFeeds(list: List<OpmlFeed>): Pair<Int, Int> {
         var imported = 0
@@ -556,7 +499,7 @@ class FeedRepository(
                     title = pe.title,
                     link = pe.link,
                     content = pe.content,
-                    summary = pe.summary ?: pe.content?.take(200),
+                    summary = buildSummary(pe),
                     author = pe.author,
                     publishedAt = pe.publishedAt,
                     fetchedAt = now,
@@ -568,29 +511,23 @@ class FeedRepository(
         }
     }
 
+    /** 列表摘要：优先 summary，缺失时返回正文；去标签并截断，避免 HTML 片段直接进列表 */
+    private fun buildSummary(parsed: ParsedEntry): String? {
+        val raw = parsed.summary?.takeIf { it.isNotBlank() } ?: parsed.content.orEmpty()
+        return stripTags(raw).take(MAX_SUMMARY_LENGTH).ifBlank { null }
+    }
+
+    private fun stripTags(html: String): String = html.replace(HTML_TAG, "").trim()
+
     private fun buildFaviconUrl(siteUrl: String): String {
-        return try {
-            val uri = android.net.Uri.parse(siteUrl)
-            "https://icons.duckduckgo.com/ip3/${uri.host}.ico"
-        } catch (_: Exception) {
-            ""
-        }
+        val host = FeedUrls.hostOf(siteUrl) ?: return ""
+        return "https://icons.duckduckgo.com/ip3/$host.ico"
     }
 
     private companion object {
-        /** 默认自建实例（老板的专属实例，优先使用） */
-        const val RSSHUB_DEFAULT = "https://succh.zone.id"
-        const val RSSHUB_OFFICIAL = "https://rsshub.app"
-        const val RSSHUB_CUPS = "https://rsshub.cups.moe"
-        const val RSSHUB_OWO = "https://rss.owo.nz"
-        const val RSSHUB_BALANCER = "https://rsshub-balancer.virworks.moe"
-        const val RSSHUB_SLARKER = "https://hub.slarker.me"
-        const val RSSHUB_RSSFOREVER = "https://rsshub.rssforever.com"
+        const val MAX_SUMMARY_LENGTH = 200
 
-        /** 公共镜像全集（用于域名识别），含默认自建实例 */
-        val PUBLIC_MIRRORS = listOf(
-            RSSHUB_DEFAULT, RSSHUB_OFFICIAL, RSSHUB_CUPS, RSSHUB_OWO,
-            RSSHUB_BALANCER, RSSHUB_SLARKER, RSSHUB_RSSFOREVER
-        )
+        /** 去 HTML 标签，预编译复用（每次抓取要跑上百篇） */
+        val HTML_TAG = Regex("<[^>]+>")
     }
 }

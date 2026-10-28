@@ -65,6 +65,12 @@ import com.succh.unifeed.data.db.entity.Folder
 import com.succh.unifeed.ui.theme.FoloDimens
 import com.succh.unifeed.ui.theme.formatRelativeTimeZh
 
+/** 侧边栏分组结果，随 feeds/searchQuery 变化才重算 */
+private data class FeedGroups(
+    val byFolder: Map<Long?, List<Feed>>,
+    val sortedFolderIds: List<Long?>
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FeedListScreen(
@@ -149,12 +155,16 @@ fun FeedListScreen(
                 }
             }
         } else {
-            val filteredFeeds = if (searchQuery.isBlank()) feeds else feeds.filter {
-                it.title.contains(searchQuery, ignoreCase = true) ||
-                it.url.contains(searchQuery, ignoreCase = true)
+            val feedGroups = remember(feeds, searchQuery) {
+                val filteredFeeds = if (searchQuery.isBlank()) feeds else feeds.filter {
+                    it.title.contains(searchQuery, ignoreCase = true) ||
+                    it.url.contains(searchQuery, ignoreCase = true)
+                }
+                val grouped = filteredFeeds.groupBy { it.folderId }
+                FeedGroups(grouped, grouped.keys.sortedBy { it ?: Long.MAX_VALUE })
             }
-            val grouped = filteredFeeds.groupBy { it.folderId }
-            val sortedKeys = grouped.keys.sortedBy { it ?: Long.MAX_VALUE }
+            val grouped = feedGroups.byFolder
+            val sortedKeys = feedGroups.sortedFolderIds
 
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
@@ -196,9 +206,12 @@ fun FeedListScreen(
     }
 
     if (showFolderManager) {
+        val feedCountByFolder = remember(feeds) {
+            feeds.groupBy { it.folderId }.mapValues { it.value.size }
+        }
         FolderManagerDialog(
             folders = folders,
-            feedCountByFolder = feeds.groupBy { it.folderId }.mapValues { it.value.size },
+            feedCountByFolder = feedCountByFolder,
             onCreateFolder = onCreateFolder,
             onRenameFolder = onRenameFolder,
             onDeleteFolder = onDeleteFolder,
