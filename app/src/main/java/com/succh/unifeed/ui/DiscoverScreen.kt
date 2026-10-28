@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -27,8 +28,11 @@ import com.succh.unifeed.data.rss.DiscoveredFeed
 import com.succh.unifeed.data.rss.RsshubCatalog
 import com.succh.unifeed.data.rss.RsshubDocRoute
 import com.succh.unifeed.data.rss.RsshubNamespace
+import com.succh.unifeed.ui.theme.FoloDimens
 import com.succh.unifeed.ui.theme.glassCardBorder
 import com.succh.unifeed.ui.theme.glassCardColors
+import com.succh.unifeed.ui.theme.glassSurface
+import com.succh.unifeed.ui.theme.glassTextFieldColors
 import com.succh.unifeed.ui.theme.glassTopAppBarColors
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -202,21 +206,28 @@ fun DiscoverScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-    if (selectedPreset == null && selectedCat == null && selectedNs == null && activeTab != 2) {
-                OutlinedTextField(
+            if (selectedPreset == null && selectedCat == null && selectedNs == null && activeTab != 2) {
+                TextField(
                     value = query,
                     onValueChange = { query = it },
                     placeholder = { Text("搜索订阅源或 RSSHub 路由") },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                     singleLine = true,
+                    shape = RoundedCornerShape(FoloDimens.SearchRadius),
+                    colors = glassTextFieldColors(),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .glassSurface(shape = RoundedCornerShape(FoloDimens.SearchRadius), elevation = 4.dp)
                 )
             }
 
-    if (selectedPreset == null && selectedCat == null && selectedNs == null && (query.isBlank() || activeTab == 2)) {
-                TabRow(selectedTabIndex = activeTab) {
+            if (selectedPreset == null && selectedCat == null && selectedNs == null && (query.isBlank() || activeTab == 2)) {
+                TabRow(
+                    selectedTabIndex = activeTab,
+                    containerColor = Color.Transparent,
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                ) {
                     Tab(selected = activeTab == 0, onClick = { activeTab = 0 }) {
                         Text("精选目录", Modifier.padding(vertical = 8.dp))
                     }
@@ -579,9 +590,8 @@ private fun UrlDiscoverPane(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { onPreviewUrl(feed.feedUrl) },
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant
-                            )
+                            colors = glassCardColors(),
+                            border = glassCardBorder()
                         ) {
                             Row(
                                 Modifier.fillMaxWidth().padding(12.dp),
