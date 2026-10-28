@@ -41,6 +41,9 @@ private fun stripOptional(path: String): String =
 
 private fun hasRequiredParam(path: String): Boolean = BARE_PARAM.containsMatchIn(stripOptional(path))
 
+/** 去掉可选段后还剩几个必选 :param：只有恰好 1 个时才能用用户输入替换的把它 */
+private fun requiredParamCount(path: String): Int = BARE_PARAM.findAll(stripOptional(path)).count()
+
 /**
  * 从 RSSHub 实例的 /api/namespace 拉取路由库（与 docs.rsshub.app 同源数据）。
  * 失败时按镜像列表回退，保证浏览功能在单个实例宕机时仍可用。
@@ -218,7 +221,8 @@ class RsshubCatalog(
             val extra = extraParam.trim().trim('/')
             val path = when {
                 extra.isEmpty() -> route.example.ifBlank { route.path }
-                route.example.isNotBlank() && !route.example.contains(':') ->
+                route.example.isNotBlank() && !route.example.contains(':') &&
+                    requiredParamCount(route.path) != 1 ->
                     route.example.trimEnd('/') + "/" + extra
                 else -> fillRequiredParam(route.path, extra)
             }
