@@ -70,3 +70,11 @@
 `assembleDebug` 通过。APK：`app/build/outputs/apk/debug/app-debug.apk`（约 18MB）。
 
 本环境补齐事项（均不改仓库构建脚本与签名配置）：安装 OpenJDK 17、Android SDK 35、补 `gradle/wrapper/gradle-wrapper.jar`。`services.gradle.org` / `repo.maven.apache.org` 对本机 TLS 握手失败，发行包走腾讯云镜像、依赖走阿里云 Maven 镜像后编译通过。未改动 `signingConfigs`、workflow keystore 还原步骤，也未引入 `fallbackToDestructiveMigration`。
+
+## F1b Step 6 构建验证（2026-10-28，构建未验证）
+
+基线：`opt/f1-glass@15d14e7`，工作区与远端一致、无未提交改动。仓库已有 `gradle/wrapper/gradle-wrapper.jar`。
+
+本云端环境 `ANDROID_HOME` / `ANDROID_SDK_ROOT` 未设置；已查 `~/Android/Sdk`、`/opt/android-sdk`、`/usr/lib/android-sdk` 及常见路径，无现成 SDK（无 `sdkmanager` / `adb` / `android.jar`）。按任务书不下载 commandlinetools，未执行 `assembleDebug`。
+
+云端构建未验证，需后续走 GitHub Actions 验证。未改动 `signingConfigs`、workflow keystore 还原步骤，也未引入 `fallbackToDestructiveMigration`。
