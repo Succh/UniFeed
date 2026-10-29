@@ -58,7 +58,8 @@ fun DiscoverScreen(
     isLoadingRsshub: Boolean = false,
     rsshubError: String? = null,
     onLoadRsshub: () -> Unit = {},
-    onSubscribeRsshubRoute: (RsshubDocRoute, String) -> Unit = { _, _ -> }
+    onSubscribeRsshubRoute: (RsshubDocRoute, String) -> Unit = { _, _ -> },
+    onOpenArticleSearch: () -> Unit = {}
 ) {
     var activeTab by remember { mutableIntStateOf(0) }
     var presetCat by remember { mutableStateOf<BuiltinCategory?>(null) }
@@ -206,6 +207,15 @@ fun DiscoverScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            if (selectedPreset == null && selectedCat == null && selectedNs == null) {
+                ArticleSearchEntry(
+                    onClick = onOpenArticleSearch,
+                    placeholder = "搜索全部已订阅文章",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+            }
             if (selectedPreset == null && selectedCat == null && selectedNs == null && activeTab != 2) {
                 TextField(
                     value = query,
@@ -217,7 +227,7 @@ fun DiscoverScreen(
                     colors = glassTextFieldColors(),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
                         .glassSurface(shape = RoundedCornerShape(FoloDimens.SearchRadius), elevation = 4.dp)
                 )
             }

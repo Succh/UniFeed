@@ -17,6 +17,7 @@ import com.succh.unifeed.data.rss.RssParser
 import com.succh.unifeed.data.rss.RsshubCatalog
 import com.succh.unifeed.data.rss.RsshubEndpoints
 import com.succh.unifeed.data.rss.RsshubNamespace
+import com.succh.unifeed.data.search.EntrySearch
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
@@ -86,6 +87,16 @@ class FeedRepository(
     fun observeFeeds(): Flow<List<Feed>> = feedDao.observeAll()
     fun observeAllEntries(): Flow<List<Entry>> = entryDao.observeAll()
     fun observeUnreadCount(): Flow<Int> = entryDao.observeUnreadCount()
+
+    /**
+     * 跨全部已订阅源搜索文章，覆盖标题、摘要、正文。
+     * 不依赖当前列表筛选（源/未读/收藏）。
+     */
+    suspend fun searchEntries(rawQuery: String): List<Entry> {
+        val query = EntrySearch.normalizeQuery(rawQuery)
+        if (query.isEmpty()) return emptyList()
+        return entryDao.searchAll(EntrySearch.escapeLike(query))
+    }
 
     suspend fun discoverFeeds(input: String): Result<List<DiscoveredFeed>> {
         return try {

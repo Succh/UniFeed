@@ -14,6 +14,8 @@ import com.succh.unifeed.data.rss.RsshubCatalog
 import com.succh.unifeed.data.rss.RsshubDocRoute
 import com.succh.unifeed.data.rss.RsshubNamespace
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -44,7 +46,13 @@ data class UniFeedUiState(
     val latestTitles: Map<Long, String> = emptyMap(),
     val rsshubNamespaces: List<RsshubNamespace> = emptyList(),
     val isLoadingRsshub: Boolean = false,
-    val rsshubError: String? = null
+    val rsshubError: String? = null,
+    /** 是否展示全文搜索页（覆盖当前列表/发现页） */
+    val showArticleSearch: Boolean = false,
+    /** 全文搜索输入，独立于订阅源列表筛选 */
+    val articleSearchQuery: String = "",
+    val articleSearchResults: List<Entry> = emptyList(),
+    val isSearchingArticles: Boolean = false
 )
 
 enum class FilterMode { ALL, UNREAD, STARRED }
@@ -55,6 +63,9 @@ class UniFeedViewModel(application: Application) : AndroidViewModel(application)
 
     private val _uiState = MutableStateFlow(UniFeedUiState())
     val uiState: StateFlow<UniFeedUiState> = _uiState.asStateFlow()
+
+    /** 全文搜索防抖任务，输入变化时取消上一次查询 */
+    private var articleSearchJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -136,6 +147,42 @@ class UniFeedViewModel(application: Application) : AndroidViewModel(application)
 
     fun setSearchQuery(query: String) {
         _uiState.update { it.copy(searchQuery = query) }
+    }
+
+    fun openArticleSearch() {
+        _uiState.update { it.copy(showArticleSearch = true) }
+    }
+
+    fun closeArticleSearch() {
+        articleSearchJob?.cancel()
+        _uiState.update {
+            it.copy(
+                showArticleSearch = false,
+                articleSearchQuery = "",
+                articleSearchResults = emptyList(),
+                isSearchingArticles = false
+            )
+        }
+    }
+
+    /**
+     * 全文搜索：覆盖全部已订阅源的标题、摘要、正文，不跟随当前列表筛选。
+     * 输入做短防抖，避免每个按键都打库。
+     */
+    fun setArticleSearchQuery(query: String) {
+        _uiState.update { it.copy(articleSearchQuery = query) }
+        articleSearchJob?.cancel()
+        val trimmed = query.trim()
+        if (trimmed.isEmpty()) {
+            _uiState.update { it.copy(articleSearchResults = emptyList(), isSearchingArticles = false) }
+            return
+        }
+        articleSearchJob = viewModelScope.launch {
+            delay(ARTICLE_SEARCH_DEBOUNCE_MS)
+            _uiState.update { it.copy(isSearchingArticles = true) }
+            val results = repo.searchEntries(trimmed)
+            _uiState.update { it.copy(articleSearchResults = results, isSearchingArticles = false) }
+        }
     }
 
     fun renameFeed(feedId: Long, newTitle: String) {
@@ -351,6 +398,8 @@ class UniFeedViewModel(application: Application) : AndroidViewModel(application)
         repo.importFeeds(list)
     }
 }
+
+private const val ARTICLE_SEARCH_DEBOUNCE_MS = 250L
 
 /** 一次全表读取算出的列表派生数据，供 [UniFeedViewModel] 合并成单条 StateFlow */
 private data class EntrySnapshot(

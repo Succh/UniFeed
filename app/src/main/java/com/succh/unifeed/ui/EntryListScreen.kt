@@ -47,7 +47,6 @@ import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
@@ -82,7 +81,6 @@ import com.succh.unifeed.ui.theme.glassCardColors
 import com.succh.unifeed.ui.theme.glassChipBorder
 import com.succh.unifeed.ui.theme.glassChipColors
 import com.succh.unifeed.ui.theme.glassSurface
-import com.succh.unifeed.ui.theme.glassTextFieldColors
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 /** 滚动时向视口下方预取的封面数量 */
@@ -107,6 +105,7 @@ fun EntryListScreen(
     showFilter: Boolean = true,
     searchQuery: String = "",
     onSearchQueryChange: (String) -> Unit = {},
+    onOpenArticleSearch: () -> Unit = {},
     onMarkRead: (Entry) -> Unit = {},
     onMarkUnread: (Entry) -> Unit = {},
     feeds: List<Feed> = emptyList(),
@@ -119,24 +118,13 @@ fun EntryListScreen(
     // 用 feedId 索引订阅源，供卡片顶部展示名称与 favicon
     val feedById = remember(feeds) { feeds.associateBy { it.id } }
     val listState = rememberLazyListState()
-    val filteredEntries = remember(entries, searchQuery) {
-        if (searchQuery.isBlank()) {
-            entries
-        } else {
-            entries.filter {
-                it.title.contains(searchQuery, ignoreCase = true) ||
-                    (it.summary?.contains(searchQuery, ignoreCase = true) == true)
-            }
-        }
-    }
     // 首次加载或刷新且本地无数据时走骨架屏，避免空白闪一下再出列表
-    val showSkeleton = filteredEntries.isEmpty() &&
-        searchQuery.isBlank() &&
+    val showSkeleton = entries.isEmpty() &&
         (!hasLoadedEntries || (isRefreshing && !hasLocalEntries))
     val hasUnread = remember(entries) { entries.any { !it.isRead } }
 
     CoverPrefetcher(
-        entries = filteredEntries,
+        entries = entries,
         listState = listState,
         headerCount = if (headerFeed != null) 1 else 0
     )
@@ -147,17 +135,11 @@ fun EntryListScreen(
         modifier = modifier.fillMaxSize()
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            TextField(
-                value = searchQuery,
-                onValueChange = onSearchQueryChange,
-                placeholder = { Text("搜索文章...") },
-                singleLine = true,
-                shape = RoundedCornerShape(FoloDimens.SearchRadius),
-                colors = glassTextFieldColors(),
+            ArticleSearchEntry(
+                onClick = onOpenArticleSearch,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = FoloDimens.ScreenHorizontal, vertical = 8.dp)
-                    .glassSurface(shape = RoundedCornerShape(FoloDimens.SearchRadius), elevation = 4.dp)
             )
             if (showFilter) {
                 Row(
@@ -224,11 +206,11 @@ fun EntryListScreen(
                             }
                         }
                     }
-                    filteredEntries.isEmpty() -> {
+                    entries.isEmpty() -> {
                         item(key = "empty", contentType = "empty") {
                             EntryEmptyState(
                                 filterMode = filterMode,
-                                searchQuery = searchQuery,
+                                searchQuery = "",
                                 onAddFeed = onAddFeed,
                                 modifier = Modifier.fillParentMaxSize()
                             )
@@ -236,7 +218,7 @@ fun EntryListScreen(
                     }
                     else -> {
                         items(
-                            items = filteredEntries,
+                            items = entries,
                             key = { it.id },
                             contentType = { "entry" }
                         ) { entry ->

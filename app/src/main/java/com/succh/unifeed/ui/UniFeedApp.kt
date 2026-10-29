@@ -56,41 +56,13 @@ fun UniFeedApp(
         }
     }
 
-    if (showDiscover) {
-        DiscoverScreen(
-            isDiscovering = state.isDiscovering,
-            discoveredFeeds = state.discoveredFeeds,
-            discoveryError = state.discoveryError,
-            isSubscribing = state.isSubscribing,
-            subscribeError = state.subscribeError,
-            onBack = {
-                showDiscover = false
-                viewModel.clearDiscovery()
-                viewModel.clearError()
-            },
-            onDiscover = { viewModel.discoverFeeds(it) },
-            onAddDirect = { viewModel.addFeed(it) },
-            onSubscribe = { url, title -> viewModel.addFeed(url, title) },
-            onClearError = { viewModel.clearError() },
-            feedPreview = state.feedPreview,
-            isPreviewing = state.isPreviewing,
-            onPreviewUrl = { viewModel.previewFeed(it) },
-            onConfirmSubscribe = { viewModel.confirmSubscribe() },
-            onClearPreview = { viewModel.clearFeedPreview() },
-            rsshubInstance = prefs.effectiveRsshubInstance,
-            rsshubNamespaces = state.rsshubNamespaces,
-            isLoadingRsshub = state.isLoadingRsshub,
-            rsshubError = state.rsshubError,
-            onLoadRsshub = { viewModel.loadRsshubCatalog() },
-            onSubscribeRsshubRoute = { route, extra -> viewModel.subscribeRsshubRoute(route, extra) }
-        )
-        return
-    }
-
     val entry = selectedEntry
     if (entry != null) {
         val feed = state.feeds.firstOrNull { it.id == entry.feedId }
-        val liveEntry = state.entries.firstOrNull { it.id == entry.id}?: entry
+        // 搜索结果可能不在当前列表筛选里，优先从搜索结果取最新快照
+        val liveEntry = state.articleSearchResults.firstOrNull { it.id == entry.id }
+            ?: state.entries.firstOrNull { it.id == entry.id }
+            ?: entry
         // 全文完整性判断要对正文做一次正则去标签，只在条目变化时重算
         val contentIncomplete = remember(liveEntry) { viewModel.isContentIncomplete(liveEntry) }
         ReaderScreen(
@@ -126,8 +98,61 @@ fun UniFeedApp(
             onSaveProgress = { id, position -> viewModel.saveReadProgress(id, position) },
             onMarkRead = { e -> if (!e.isRead) viewModel.markRead(e) }
         )
-    } else {
-        MainTabScreen(
+        return
+    }
+
+    if (state.showArticleSearch) {
+        ArticleSearchScreen(
+            query = state.articleSearchQuery,
+            results = state.articleSearchResults,
+            feeds = state.feeds,
+            isSearching = state.isSearchingArticles,
+            showSummary = prefs.listShowSummary,
+            onQueryChange = viewModel::setArticleSearchQuery,
+            onBack = viewModel::closeArticleSearch,
+            onEntryClick = { clicked ->
+                restoreProgressOnOpen = true
+                readerList = state.articleSearchResults
+                selectedEntry = clicked
+            },
+            onStarToggle = viewModel::setStarred
+        )
+        return
+    }
+
+    if (showDiscover) {
+        DiscoverScreen(
+            isDiscovering = state.isDiscovering,
+            discoveredFeeds = state.discoveredFeeds,
+            discoveryError = state.discoveryError,
+            isSubscribing = state.isSubscribing,
+            subscribeError = state.subscribeError,
+            onBack = {
+                showDiscover = false
+                viewModel.clearDiscovery()
+                viewModel.clearError()
+            },
+            onDiscover = { viewModel.discoverFeeds(it) },
+            onAddDirect = { viewModel.addFeed(it) },
+            onSubscribe = { url, title -> viewModel.addFeed(url, title) },
+            onClearError = { viewModel.clearError() },
+            feedPreview = state.feedPreview,
+            isPreviewing = state.isPreviewing,
+            onPreviewUrl = { viewModel.previewFeed(it) },
+            onConfirmSubscribe = { viewModel.confirmSubscribe() },
+            onClearPreview = { viewModel.clearFeedPreview() },
+            rsshubInstance = prefs.effectiveRsshubInstance,
+            rsshubNamespaces = state.rsshubNamespaces,
+            isLoadingRsshub = state.isLoadingRsshub,
+            rsshubError = state.rsshubError,
+            onLoadRsshub = { viewModel.loadRsshubCatalog() },
+            onSubscribeRsshubRoute = { route, extra -> viewModel.subscribeRsshubRoute(route, extra) },
+            onOpenArticleSearch = viewModel::openArticleSearch
+        )
+        return
+    }
+
+    MainTabScreen(
             tab = tab,
             onTabChange = { tab = it },
             state = state,
@@ -138,6 +163,7 @@ fun UniFeedApp(
                 if (feedId != null) tab = 1
             },
             onAddFeed = { showDiscover = true },
+            onOpenArticleSearch = viewModel::openArticleSearch,
             onDeleteFeed = viewModel::deleteFeed,
             onEntryClick = { clicked ->
                 restoreProgressOnOpen = true
@@ -161,7 +187,6 @@ fun UniFeedApp(
             onMarkUnread = viewModel::markUnread,
             onRefreshFeed = { feed -> viewModel.refreshFeedById(feed.id) }
         )
-    }
 }
 
 @Composable
@@ -173,6 +198,7 @@ private fun MainTabScreen(
     snackbarHostState: SnackbarHostState = SnackbarHostState(),
     onSelectFeed: (Long?) -> Unit,
     onAddFeed: () -> Unit,
+    onOpenArticleSearch: () -> Unit = {},
     onDeleteFeed: (com.succh.unifeed.data.db.entity.Feed) -> Unit,
     onEntryClick: (Entry) -> Unit,
     onStarToggle: (Entry, Boolean) -> Unit,
@@ -267,6 +293,7 @@ private fun MainTabScreen(
                     onMarkAllRead = onMarkAllRead,
                     searchQuery = searchQuery,
                     onSearchQueryChange = onSearchQueryChange,
+                    onOpenArticleSearch = onOpenArticleSearch,
                     onMarkRead = onMarkRead,
                     onMarkUnread = onMarkUnread,
                     headerFeed = headerFeed,
@@ -289,6 +316,7 @@ private fun MainTabScreen(
                     isRefreshing = state.isLoading,
                     showFilter = false,
                     filterMode = FilterMode.STARRED,
+                    onOpenArticleSearch = onOpenArticleSearch,
                     hasLoadedEntries = state.hasLoadedEntries,
                     hasLocalEntries = state.hasLocalEntries
                 )
