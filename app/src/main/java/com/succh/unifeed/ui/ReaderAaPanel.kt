@@ -22,7 +22,9 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.succh.unifeed.ui.theme.glassBarColor
 
 /**
  * 阅读页 Aa 快捷设置面板，参考 Folo 阅读体验。
@@ -37,7 +39,10 @@ fun AaSettingsPanel(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState = sheetState
+        sheetState = sheetState,
+        containerColor = glassBarColor(),
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        scrimColor = Color.Black.copy(alpha = 0.32f)
     ) {
         Column(
             modifier = Modifier

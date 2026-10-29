@@ -48,7 +48,6 @@ import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
@@ -60,7 +59,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -79,6 +77,12 @@ import com.succh.unifeed.data.db.entity.Entry
 import com.succh.unifeed.data.db.entity.Feed
 import com.succh.unifeed.ui.theme.FoloDimens
 import com.succh.unifeed.ui.theme.formatRelativeTimeZh
+import com.succh.unifeed.ui.theme.glassCardBorder
+import com.succh.unifeed.ui.theme.glassCardColors
+import com.succh.unifeed.ui.theme.glassChipBorder
+import com.succh.unifeed.ui.theme.glassChipColors
+import com.succh.unifeed.ui.theme.glassSurface
+import com.succh.unifeed.ui.theme.glassTextFieldColors
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 /** 滚动时向视口下方预取的封面数量 */
@@ -149,14 +153,11 @@ fun EntryListScreen(
                 placeholder = { Text("搜索文章...") },
                 singleLine = true,
                 shape = RoundedCornerShape(FoloDimens.SearchRadius),
-                colors = TextFieldDefaults.colors(
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    disabledIndicatorColor = Color.Transparent
-                ),
+                colors = glassTextFieldColors(),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = FoloDimens.ScreenHorizontal, vertical = 8.dp)
+                    .glassSurface(shape = RoundedCornerShape(FoloDimens.SearchRadius), elevation = 4.dp)
             )
             if (showFilter) {
                 Row(
@@ -169,12 +170,16 @@ fun EntryListScreen(
                     FilterChip(
                         selected = filterMode == FilterMode.ALL,
                         onClick = { onFilter(FilterMode.ALL) },
-                        label = { Text("全部") }
+                        label = { Text("全部") },
+                        colors = glassChipColors(),
+                        border = glassChipBorder(filterMode == FilterMode.ALL)
                     )
                     FilterChip(
                         selected = filterMode == FilterMode.UNREAD,
                         onClick = { onFilter(FilterMode.UNREAD) },
-                        label = { Text("未读") }
+                        label = { Text("未读") },
+                        colors = glassChipColors(),
+                        border = glassChipBorder(filterMode == FilterMode.UNREAD)
                     )
                     Spacer(modifier = Modifier.weight(1f))
                     if (hasUnread) {
@@ -297,11 +302,11 @@ private fun CoverPrefetcher(
 
 @Composable
 private fun EntrySkeletonCard(alpha: Float) {
-    val colors = MaterialTheme.colorScheme
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(FoloDimens.CardRadius),
-        colors = CardDefaults.cardColors(containerColor = colors.surface),
+        colors = glassCardColors(),
+        border = glassCardBorder(),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Row(
@@ -525,7 +530,8 @@ private fun FeedInfoHeader(feed: Feed, entryCount: Int) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp),
+            .glassSurface(shape = RoundedCornerShape(FoloDimens.CardRadius), elevation = 4.dp)
+            .padding(horizontal = 12.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (!feed.faviconUrl.isNullOrBlank()) {
@@ -572,7 +578,7 @@ private fun EntryItem(
     onStar: () -> Unit
 ) {
     val colors = MaterialTheme.colorScheme
-    val cardAlpha = if (entry.isRead) 0.6f else 1f
+    // 已读只用字重区分，避免整卡半透明导致玻璃底上文字发灰
     val imageUrl = entry.imageUrl
     var showThumb by remember(entry.id, imageUrl) { mutableStateOf(!imageUrl.isNullOrBlank()) }
     val context = LocalContext.current
@@ -596,11 +602,10 @@ private fun EntryItem(
 
     Card(
         onClick = onClick,
-        modifier = Modifier
-            .fillMaxWidth()
-            .alpha(cardAlpha),
+        modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(FoloDimens.CardRadius),
-        colors = CardDefaults.cardColors(containerColor = colors.surface),
+        colors = glassCardColors(),
+        border = glassCardBorder(),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Row(

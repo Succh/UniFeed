@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -17,6 +18,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -26,6 +28,12 @@ import com.succh.unifeed.data.rss.DiscoveredFeed
 import com.succh.unifeed.data.rss.RsshubCatalog
 import com.succh.unifeed.data.rss.RsshubDocRoute
 import com.succh.unifeed.data.rss.RsshubNamespace
+import com.succh.unifeed.ui.theme.FoloDimens
+import com.succh.unifeed.ui.theme.glassCardBorder
+import com.succh.unifeed.ui.theme.glassCardColors
+import com.succh.unifeed.ui.theme.glassSurface
+import com.succh.unifeed.ui.theme.glassTextFieldColors
+import com.succh.unifeed.ui.theme.glassTopAppBarColors
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -180,6 +188,7 @@ fun DiscoverScreen(
     }
 
     Scaffold(
+        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
                 title = { Text(titleText) },
@@ -188,11 +197,7 @@ fun DiscoverScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimary,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onPrimary
-                )
+                colors = glassTopAppBarColors()
             )
         }
     ) { padding ->
@@ -201,21 +206,28 @@ fun DiscoverScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-    if (selectedPreset == null && selectedCat == null && selectedNs == null && activeTab != 2) {
-                OutlinedTextField(
+            if (selectedPreset == null && selectedCat == null && selectedNs == null && activeTab != 2) {
+                TextField(
                     value = query,
                     onValueChange = { query = it },
                     placeholder = { Text("搜索订阅源或 RSSHub 路由") },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                     singleLine = true,
+                    shape = RoundedCornerShape(FoloDimens.SearchRadius),
+                    colors = glassTextFieldColors(),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .glassSurface(shape = RoundedCornerShape(FoloDimens.SearchRadius), elevation = 4.dp)
                 )
             }
 
-    if (selectedPreset == null && selectedCat == null && selectedNs == null && (query.isBlank() || activeTab == 2)) {
-                TabRow(selectedTabIndex = activeTab) {
+            if (selectedPreset == null && selectedCat == null && selectedNs == null && (query.isBlank() || activeTab == 2)) {
+                TabRow(
+                    selectedTabIndex = activeTab,
+                    containerColor = Color.Transparent,
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                ) {
                     Tab(selected = activeTab == 0, onClick = { activeTab = 0 }) {
                         Text("精选目录", Modifier.padding(vertical = 8.dp))
                     }
@@ -522,14 +534,18 @@ private fun UrlDiscoverPane(
     onClearPreview: () -> Unit
 ) {
     Column(Modifier.padding(16.dp)) {
-        OutlinedTextField(
+        TextField(
             value = query,
             onValueChange = onQuery,
             label = { Text("网站地址 或 RSS/Atom 链接") },
             placeholder = { Text("https://example.com") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-            modifier = Modifier.fillMaxWidth()
+            shape = RoundedCornerShape(FoloDimens.SearchRadius),
+            colors = glassTextFieldColors(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .glassSurface(shape = RoundedCornerShape(FoloDimens.SearchRadius), elevation = 4.dp)
         )
         Spacer(Modifier.height(8.dp))
         Row {
@@ -578,9 +594,8 @@ private fun UrlDiscoverPane(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { onPreviewUrl(feed.feedUrl) },
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant
-                            )
+                            colors = glassCardColors(),
+                            border = glassCardBorder()
                         ) {
                             Row(
                                 Modifier.fillMaxWidth().padding(12.dp),
@@ -632,7 +647,8 @@ private fun CategoryCard(title: String, subtitle: String, onClick: () -> Unit) {
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp)
             .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        colors = glassCardColors(),
+        border = glassCardBorder()
     ) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
@@ -657,7 +673,8 @@ private fun BuiltinFeedRow(feed: BuiltinFeed, onClick: () -> Unit) {
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp)
             .clickable(enabled = !blocked, onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        colors = glassCardColors(),
+        border = glassCardBorder()
     ) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
@@ -699,7 +716,8 @@ private fun FeedPreviewCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        colors = glassCardColors(),
+        border = glassCardBorder()
     ) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -757,7 +775,8 @@ private fun RouteRow(
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp)
             .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        colors = glassCardColors(),
+        border = glassCardBorder()
     ) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),

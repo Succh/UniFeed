@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -43,8 +44,6 @@ import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -64,6 +63,9 @@ import com.succh.unifeed.data.db.entity.Feed
 import com.succh.unifeed.data.db.entity.Folder
 import com.succh.unifeed.ui.theme.FoloDimens
 import com.succh.unifeed.ui.theme.formatRelativeTimeZh
+import com.succh.unifeed.ui.theme.glassSurface
+import com.succh.unifeed.ui.theme.glassTextFieldColors
+import com.succh.unifeed.ui.theme.glassTopAppBarColors
 
 /** 侧边栏分组结果，随 feeds/searchQuery 变化才重算 */
 private data class FeedGroups(
@@ -98,6 +100,8 @@ fun FeedListScreen(
 
     Scaffold(
         modifier = modifier,
+        containerColor = Color.Transparent,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             CenterAlignedTopAppBar(
                 title = { Text("订阅源") },
@@ -106,10 +110,8 @@ fun FeedListScreen(
                         Text("管理文件夹")
                     }
                 },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground
-                )
+                colors = glassTopAppBarColors(),
+                windowInsets = WindowInsets(0, 0, 0, 0)
             )
         },
         floatingActionButton = {
@@ -129,14 +131,11 @@ fun FeedListScreen(
                 placeholder = { Text("搜索订阅源...") },
                 singleLine = true,
                 shape = RoundedCornerShape(FoloDimens.SearchRadius),
-                colors = TextFieldDefaults.colors(
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    disabledIndicatorColor = Color.Transparent
-                ),
+                colors = glassTextFieldColors(),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = FoloDimens.ScreenHorizontal, vertical = 8.dp)
+                    .glassSurface(shape = RoundedCornerShape(FoloDimens.SearchRadius), elevation = 4.dp)
             )
             if (feeds.isEmpty()) {
             Box(
@@ -295,8 +294,10 @@ private fun FeedItem(
                 .fillMaxWidth()
                 .heightIn(min = FoloDimens.FeedItemHeight)
                 .padding(horizontal = 8.dp, vertical = 6.dp)
-                .clip(RoundedCornerShape(FoloDimens.FeedSelectedRadius))
-                .background(if (selected) colors.primaryContainer.copy(alpha = 0.45f) else Color.Transparent)
+                .glassSurface(
+                    shape = RoundedCornerShape(FoloDimens.FeedSelectedRadius),
+                    elevation = if (selected) 8.dp else 2.dp
+                )
                 .combinedClickable(
                     onClick = onClick,
                     onLongClick = { menuExpanded = true }
