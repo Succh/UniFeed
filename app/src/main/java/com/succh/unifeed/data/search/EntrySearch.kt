@@ -30,4 +30,41 @@ object EntrySearch {
         if (html.isNullOrBlank()) return ""
         return html.replace(HTML_TAG, "").trim()
     }
+
+    /**
+     * 在纯文本中找出全部忽略大小写的命中区间，区间互不重叠。
+     */
+    fun findRanges(text: String, query: String): List<IntRange> {
+        val q = normalizeQuery(query)
+        if (q.isEmpty() || text.isEmpty()) return emptyList()
+        val ranges = mutableListOf<IntRange>()
+        val qLen = q.length
+        var start = 0
+        while (start <= text.length - qLen) {
+            val idx = text.indexOf(q, start, ignoreCase = true)
+            if (idx < 0) break
+            ranges.add(idx until (idx + qLen))
+            start = idx + qLen
+        }
+        return ranges
+    }
+
+    /**
+     * 结果列表摘要：标题未命中时，优先用摘要；摘要也未命中则从正文截一段带关键词的上下文。
+     */
+    fun resultSnippet(title: String, summary: String?, content: String?, query: String, maxLen: Int = 120): String {
+        val q = normalizeQuery(query)
+        val summaryText = summary.orEmpty()
+        if (q.isEmpty()) return summaryText
+        if (title.contains(q, ignoreCase = true)) return summaryText
+        if (summaryText.contains(q, ignoreCase = true)) return summaryText
+        val plain = stripTags(content)
+        val idx = plain.indexOf(q, ignoreCase = true)
+        if (idx < 0) return summaryText
+        val start = (idx - 24).coerceAtLeast(0)
+        val end = (idx + q.length + (maxLen - q.length - 24)).coerceAtMost(plain.length)
+        val prefix = if (start > 0) "…" else ""
+        val suffix = if (end < plain.length) "…" else ""
+        return prefix + plain.substring(start, end) + suffix
+    }
 }

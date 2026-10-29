@@ -27,4 +27,24 @@ class EntrySearchTest {
     fun stripTagsRemovesHtml() {
         assertEquals("Hello World", EntrySearch.stripTags("<p>Hello <b>World</b></p>"))
     }
+
+    @Test
+    fun findRangesIgnoresCaseAndFindsAll() {
+        val ranges = EntrySearch.findRanges("Room 与 room 还有 ROOM", "room")
+        assertEquals(3, ranges.size)
+        assertEquals(0, ranges[0].first)
+        assertEquals(8, ranges[1].first)
+        assertEquals(16, ranges[2].first)
+    }
+
+    @Test
+    fun resultSnippetFallsBackToContent() {
+        val snippet = EntrySearch.resultSnippet(
+            title = "标题",
+            summary = "无关摘要",
+            content = "<p>前面一些字 Compose 很适合写 UI</p>",
+            query = "compose"
+        )
+        assertTrue(snippet.contains("Compose", ignoreCase = true))
+    }
 }

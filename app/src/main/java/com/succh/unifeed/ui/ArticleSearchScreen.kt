@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.succh.unifeed.data.db.entity.Entry
 import com.succh.unifeed.data.db.entity.Feed
+import com.succh.unifeed.data.search.EntrySearch
 import com.succh.unifeed.ui.theme.FoloDimens
 import com.succh.unifeed.ui.theme.formatRelativeTimeZh
 import com.succh.unifeed.ui.theme.glassCardBorder
@@ -203,6 +204,7 @@ fun ArticleSearchScreen(
                                 entry = entry,
                                 feedTitle = feed?.title.orEmpty(),
                                 feedFaviconUrl = feed?.faviconUrl,
+                                query = query,
                                 showSummary = showSummary,
                                 onClick = { onEntryClick(entry) },
                                 onStar = { onStarToggle(entry, !entry.isStarred) }
@@ -242,12 +244,17 @@ private fun SearchResultCard(
     entry: Entry,
     feedTitle: String,
     feedFaviconUrl: String?,
+    query: String,
     showSummary: Boolean,
     onClick: () -> Unit,
     onStar: () -> Unit
 ) {
     val colors = MaterialTheme.colorScheme
-    val summary = entry.summary.orEmpty()
+    val snippet = remember(entry.title, entry.summary, entry.content, query) {
+        EntrySearch.resultSnippet(entry.title, entry.summary, entry.content, query)
+    }
+    val highlightedTitle = rememberHighlightedText(entry.title, query)
+    val highlightedSnippet = rememberHighlightedText(snippet, query)
     val relativeTime = remember(entry.publishedAt) { formatRelativeTimeZh(entry.publishedAt) }
     Card(
         onClick = onClick,
@@ -292,16 +299,16 @@ private fun SearchResultCard(
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = entry.title,
+                    text = highlightedTitle,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = if (entry.isRead) FontWeight.Normal else FontWeight.Bold,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
-                if (showSummary && summary.isNotBlank()) {
+                if (snippet.isNotBlank() && (showSummary || query.isNotBlank())) {
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        text = summary,
+                        text = highlightedSnippet,
                         style = MaterialTheme.typography.bodyMedium,
                         color = colors.onSurfaceVariant,
                         maxLines = 3,

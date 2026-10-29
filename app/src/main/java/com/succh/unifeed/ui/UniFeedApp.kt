@@ -96,7 +96,8 @@ fun UniFeedApp(
                 selectedEntry = next
             },
             onSaveProgress = { id, position -> viewModel.saveReadProgress(id, position) },
-            onMarkRead = { e -> if (!e.isRead) viewModel.markRead(e) }
+            onMarkRead = { e -> if (!e.isRead) viewModel.markRead(e) },
+            highlightQuery = state.articleSearchQuery.takeIf { it.isNotBlank() && state.showArticleSearch }
         )
         return
     }

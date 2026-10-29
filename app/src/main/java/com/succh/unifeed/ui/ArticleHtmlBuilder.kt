@@ -1,11 +1,15 @@
 package com.succh.unifeed.ui
 
+import com.succh.unifeed.data.search.EntrySearch
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
+import org.jsoup.nodes.Element
+import org.jsoup.nodes.TextNode
 import java.net.URI
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.regex.Pattern
 
 /**
  * 将 RSS 条目正文转成带样式的 HTML，供 ReaderScreen 的 WebView 渲染。
@@ -15,13 +19,14 @@ object ArticleHtmlBuilder {
 
     private data class Palette(
         val bg: String, val fg: String, val muted: String,
-        val border: String, val codeBg: String, val link: String, val quote: String
+        val border: String, val codeBg: String, val link: String, val quote: String,
+        val mark: String
     )
 
     private fun palette(theme: ReaderTheme): Palette = when (theme) {
-        ReaderTheme.LIGHT -> Palette("#ffffff", "#1c1c1e", "#6e6e73", "#e5e5ea", "#f5f5f7", "#007aff", "#3a3a3c")
-        ReaderTheme.SEPIA -> Palette("#faf6ef", "#3d3a34", "#8a8378", "#e2dccb", "#f0ead9", "#8b5e3c", "#5c564c")
-        ReaderTheme.DARK -> Palette("#1c1c1e", "#e8e8ed", "#98989f", "#3a3a3c", "#2c2c2e", "#4da3ff", "#c7c7cc")
+        ReaderTheme.LIGHT -> Palette("#ffffff", "#1c1c1e", "#6e6e73", "#e5e5ea", "#f5f5f7", "#007aff", "#3a3a3c", "#ffe58a")
+        ReaderTheme.SEPIA -> Palette("#faf6ef", "#3d3a34", "#8a8378", "#e2dccb", "#f0ead9", "#8b5e3c", "#5c564c", "#f3d27a")
+        ReaderTheme.DARK -> Palette("#1c1c1e", "#e8e8ed", "#98989f", "#3a3a3c", "#2c2c2e", "#4da3ff", "#c7c7cc", "#8a6d1b")
     }
 
     private fun buildCss(
@@ -71,6 +76,7 @@ hr { border: none; border-top: 1px solid ${p.border}; margin: 20px 0; }
 .hero img { width: 100%; height: 100%; object-fit: cover; object-position: center; margin: 0; border-radius: 0; opacity: 0.38; display: block; }
 .hero::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(to bottom, ${p.bg}22 0%, ${p.bg}66 48%, ${p.bg} 100%); }
 .orig { display: block; margin: 32px auto 8px; padding: 10px 20px; text-align: center; border: 1px solid ${p.border}; border-radius: 20px; color: ${p.link}; font-size: 15px; }
+mark.search-hit { background: ${p.mark}; color: inherit; padding: 0 2px; border-radius: 2px; }
 """.trimIndent()
     }
 
@@ -83,8 +89,10 @@ hr { border: none; border-top: 1px solid ${p.border}; margin: 20px 0; }
         prefs: ReaderPrefs,
         feedTitle: String? = null,
         feedFaviconUrl: String? = null,
-        coverImageUrl: String? = null
+        coverImageUrl: String? = null,
+        highlightQuery: String? = null
     ): String {
+        val keyword = EntrySearch.normalizeQuery(highlightQuery.orEmpty())
         val sourceRow = buildString {
             append("<div class='source-row'>")
             if (!feedFaviconUrl.isNullOrBlank()) {
@@ -109,7 +117,7 @@ hr { border: none; border-top: 1px solid ${p.border}; margin: 20px 0; }
         val hero = if (!coverImageUrl.isNullOrBlank() && prefs.showImages) {
             "<div class='hero'><img src='${escapeAttr(coverImageUrl)}' alt='' referrerpolicy='no-referrer'></div>"
         } else ""
-        val body = normalize(content, link)
+        val body = highlightHtml(normalize(content, link), keyword)
         val orig = if (!link.isNullOrBlank()) {
             "<a class='orig' href='${escapeAttr(link)}'>阅读原文 ↗</a>"
         } else ""
@@ -123,13 +131,75 @@ hr { border: none; border-top: 1px solid ${p.border}; margin: 20px 0; }
 $hero
 <div class='article'>
 $sourceRow
-<h1 class='headline'>${escape(title)}</h1>
+<h1 class='headline'>${highlightPlain(title, keyword)}</h1>
 $byline
 <hr>
 $body
 $orig
 </div>
 </body></html>"""
+    }
+
+    /** 纯文本关键词包一层 mark，供已转义的标题使用 */
+    internal fun highlightPlain(text: String, query: String): String {
+        val escaped = escape(text)
+        if (query.isEmpty()) return escaped
+        if (EntrySearch.findRanges(text, query).isEmpty()) return escaped
+        // 标题已转义，按原文字符区间再包 mark 会错位；直接对转义后文本做忽略大小写替换
+        val pattern = Pattern.compile(Pattern.quote(escape(query)), Pattern.CASE_INSENSITIVE)
+        return pattern.matcher(escaped).replaceAll("<mark class='search-hit'>\$0</mark>")
+    }
+
+    /**
+     * 只在文本节点里高亮，避开标签属性，避免破坏 HTML。
+     */
+    internal fun highlightHtml(html: String, query: String): String {
+        if (query.isEmpty() || html.isBlank()) return html
+        return try {
+            val doc = Jsoup.parseBodyFragment(html)
+            val skip = setOf("script", "style", "code", "pre", "mark")
+            walkHighlight(doc.body(), query, skip)
+            doc.body().html()
+        } catch (_: Exception) {
+            html
+        }
+    }
+
+    private fun walkHighlight(element: Element, query: String, skip: Set<String>) {
+        if (element.tagName().lowercase() in skip) return
+        val children = element.childNodes().toList()
+        children.forEach { child ->
+            when (child) {
+                is TextNode -> highlightTextNode(child, query, skip)
+                is Element -> walkHighlight(child, query, skip)
+            }
+        }
+    }
+
+    private fun highlightTextNode(node: TextNode, query: String, skip: Set<String>) {
+        val parent = node.parent() as? Element ?: return
+        if (parent.tagName().lowercase() in skip) return
+        val text = node.wholeText
+        val ranges = EntrySearch.findRanges(text, query)
+        if (ranges.isEmpty()) return
+        val fragment = StringBuilder()
+        var cursor = 0
+        ranges.forEach { range ->
+            if (range.first > cursor) fragment.append(escapeHtmlKeep(text.substring(cursor, range.first)))
+            fragment.append("<mark class='search-hit'>")
+            fragment.append(escapeHtmlKeep(text.substring(range.first, range.last + 1)))
+            fragment.append("</mark>")
+            cursor = range.last + 1
+        }
+        if (cursor < text.length) fragment.append(escapeHtmlKeep(text.substring(cursor)))
+        node.after(fragment.toString())
+        node.remove()
+    }
+
+    private fun escapeHtmlKeep(text: String): String {
+        return text.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
     }
 
     /**
