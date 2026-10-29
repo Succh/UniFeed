@@ -22,6 +22,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.filled.Search
@@ -36,6 +38,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -56,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.succh.unifeed.data.db.entity.Entry
 import com.succh.unifeed.data.db.entity.Feed
+import com.succh.unifeed.data.db.entity.SearchHistory
 import com.succh.unifeed.data.search.EntrySearch
 import com.succh.unifeed.ui.theme.FoloDimens
 import com.succh.unifeed.ui.theme.formatRelativeTimeZh
@@ -109,7 +113,11 @@ fun ArticleSearchScreen(
     onQueryChange: (String) -> Unit,
     onBack: () -> Unit,
     onEntryClick: (Entry) -> Unit,
-    onStarToggle: (Entry, Boolean) -> Unit
+    onStarToggle: (Entry, Boolean) -> Unit,
+    history: List<SearchHistory> = emptyList(),
+    onReplayHistory: (String) -> Unit = {},
+    onDeleteHistory: (Long) -> Unit = {},
+    onClearHistory: () -> Unit = {}
 ) {
     val feedById = remember(feeds) { feeds.associateBy { it.id } }
     val focusRequester = remember { FocusRequester() }
@@ -165,8 +173,11 @@ fun ArticleSearchScreen(
             )
             when {
                 query.isBlank() -> {
-                    SearchHint(
-                        text = "输入关键词，搜索所有已订阅源的标题、摘要和正文",
+                    SearchHistoryPanel(
+                        history = history,
+                        onReplay = onReplayHistory,
+                        onDelete = onDeleteHistory,
+                        onClear = onClearHistory,
                         modifier = Modifier.fillMaxSize()
                     )
                 }
@@ -210,6 +221,76 @@ fun ArticleSearchScreen(
                                 onStar = { onStarToggle(entry, !entry.isStarred) }
                             )
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SearchHistoryPanel(
+    history: List<SearchHistory>,
+    onReplay: (String) -> Unit,
+    onDelete: (Long) -> Unit,
+    onClear: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (history.isEmpty()) {
+        SearchHint(
+            text = "输入关键词，搜索所有已订阅源的标题、摘要和正文",
+            modifier = modifier
+        )
+        return
+    }
+    Column(modifier = modifier.padding(horizontal = FoloDimens.ScreenHorizontal)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "搜索历史",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = onClear) {
+                Text("清空")
+            }
+        }
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            items(history, key = { it.id }) { item ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { onReplay(item.query) }
+                        .padding(vertical = 8.dp, horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.History,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        text = item.query,
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    IconButton(onClick = { onDelete(item.id) }, modifier = Modifier.size(36.dp)) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = "删除",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }

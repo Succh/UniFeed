@@ -7,6 +7,7 @@ import com.succh.unifeed.UniFeedApp
 import com.succh.unifeed.data.db.entity.Entry
 import com.succh.unifeed.data.db.entity.Feed
 import com.succh.unifeed.data.db.entity.Folder
+import com.succh.unifeed.data.db.entity.SearchHistory
 import com.succh.unifeed.data.model.FeedPreview
 import com.succh.unifeed.data.opml.OpmlManager
 import com.succh.unifeed.data.rss.DiscoveredFeed
@@ -52,7 +53,8 @@ data class UniFeedUiState(
     /** 全文搜索输入，独立于订阅源列表筛选 */
     val articleSearchQuery: String = "",
     val articleSearchResults: List<Entry> = emptyList(),
-    val isSearchingArticles: Boolean = false
+    val isSearchingArticles: Boolean = false,
+    val searchHistory: List<SearchHistory> = emptyList()
 )
 
 enum class FilterMode { ALL, UNREAD, STARRED }
@@ -81,6 +83,11 @@ class UniFeedViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             repo.observeFolders().collect { folders ->
                 _uiState.update { it.copy(folders = folders) }
+            }
+        }
+        viewModelScope.launch {
+            repo.observeSearchHistory().collect { history ->
+                _uiState.update { it.copy(searchHistory = history) }
             }
         }
         viewModelScope.launch {
@@ -182,7 +189,20 @@ class UniFeedViewModel(application: Application) : AndroidViewModel(application)
             _uiState.update { it.copy(isSearchingArticles = true) }
             val results = repo.searchEntries(trimmed)
             _uiState.update { it.copy(articleSearchResults = results, isSearchingArticles = false) }
+            repo.recordSearchHistory(trimmed)
         }
+    }
+
+    fun replaySearchHistory(query: String) {
+        setArticleSearchQuery(query)
+    }
+
+    fun deleteSearchHistory(id: Long) {
+        viewModelScope.launch { repo.deleteSearchHistory(id) }
+    }
+
+    fun clearSearchHistory() {
+        viewModelScope.launch { repo.clearSearchHistory() }
     }
 
     fun renameFeed(feedId: Long, newTitle: String) {

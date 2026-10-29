@@ -116,7 +116,11 @@ fun UniFeedApp(
                 readerList = state.articleSearchResults
                 selectedEntry = clicked
             },
-            onStarToggle = viewModel::setStarred
+            onStarToggle = viewModel::setStarred,
+            history = state.searchHistory,
+            onReplayHistory = viewModel::replaySearchHistory,
+            onDeleteHistory = viewModel::deleteSearchHistory,
+            onClearHistory = viewModel::clearSearchHistory
         )
         return
     }
