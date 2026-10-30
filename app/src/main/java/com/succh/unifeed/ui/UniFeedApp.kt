@@ -83,11 +83,18 @@ fun UniFeedApp(
                 }
             },
             onShare = { e ->
-                val sendIntent = Intent(Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    putExtra(Intent.EXTRA_TEXT, "${e.title}\n${e.link}")
+                // 走系统分享面板，正文固定为「标题 + 链接」，不自造分享 UI
+                val text = ArticleShare.shareText(e.title, e.link)
+                if (text.isNotBlank()) {
+                    val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_SUBJECT, e.title)
+                        putExtra(Intent.EXTRA_TEXT, text)
+                    }
+                    runCatching {
+                        context.startActivity(Intent.createChooser(sendIntent, "分享文章"))
+                    }
                 }
-                runCatching { context.startActivity(Intent.createChooser(sendIntent, "分享")) }
             },
             listEntries = readerList,
             restoreProgress = restoreProgressOnOpen,
