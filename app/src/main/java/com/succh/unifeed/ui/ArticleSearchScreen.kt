@@ -111,6 +111,7 @@ fun ArticleSearchScreen(
     isSearching: Boolean,
     showSummary: Boolean,
     onQueryChange: (String) -> Unit,
+    onSubmitQuery: (String) -> Unit = onQueryChange,
     onBack: () -> Unit,
     onEntryClick: (Entry) -> Unit,
     onStarToggle: (Entry, Boolean) -> Unit,
@@ -162,7 +163,10 @@ fun ArticleSearchScreen(
                 },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = { keyboard?.hide() }),
+                keyboardActions = KeyboardActions(onSearch = {
+                    keyboard?.hide()
+                    onSubmitQuery(query)
+                }),
                 shape = RoundedCornerShape(FoloDimens.SearchRadius),
                 colors = glassTextFieldColors(),
                 modifier = Modifier
@@ -175,7 +179,10 @@ fun ArticleSearchScreen(
                 query.isBlank() -> {
                     SearchHistoryPanel(
                         history = history,
-                        onReplay = onReplayHistory,
+                        onReplay = { item ->
+                            keyboard?.hide()
+                            onReplayHistory(item)
+                        },
                         onDelete = onDeleteHistory,
                         onClear = onClearHistory,
                         modifier = Modifier.fillMaxSize()

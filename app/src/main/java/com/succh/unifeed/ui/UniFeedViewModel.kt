@@ -177,6 +177,20 @@ class UniFeedViewModel(application: Application) : AndroidViewModel(application)
      * 输入做短防抖，避免每个按键都打库。
      */
     fun setArticleSearchQuery(query: String) {
+        runArticleSearch(query, debounce = true)
+    }
+
+    /** 键盘搜索确认：立刻查，不走输入防抖 */
+    fun submitArticleSearch(query: String) {
+        runArticleSearch(query, debounce = false)
+    }
+
+    /** 点历史项：回填关键词并立刻再搜 */
+    fun replaySearchHistory(query: String) {
+        runArticleSearch(query, debounce = false)
+    }
+
+    private fun runArticleSearch(query: String, debounce: Boolean) {
         _uiState.update { it.copy(articleSearchQuery = query) }
         articleSearchJob?.cancel()
         val trimmed = query.trim()
@@ -185,16 +199,12 @@ class UniFeedViewModel(application: Application) : AndroidViewModel(application)
             return
         }
         articleSearchJob = viewModelScope.launch {
-            delay(ARTICLE_SEARCH_DEBOUNCE_MS)
+            if (debounce) delay(ARTICLE_SEARCH_DEBOUNCE_MS)
             _uiState.update { it.copy(isSearchingArticles = true) }
             val results = repo.searchEntries(trimmed)
             _uiState.update { it.copy(articleSearchResults = results, isSearchingArticles = false) }
             repo.recordSearchHistory(trimmed)
         }
-    }
-
-    fun replaySearchHistory(query: String) {
-        setArticleSearchQuery(query)
     }
 
     fun deleteSearchHistory(id: Long) {

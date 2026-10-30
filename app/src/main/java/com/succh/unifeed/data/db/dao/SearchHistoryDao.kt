@@ -28,7 +28,18 @@ interface SearchHistoryDao {
     @Query("DELETE FROM search_history")
     suspend fun deleteAll()
 
-    @Query("SELECT id FROM search_history ORDER BY searchedAt DESC LIMIT -1 OFFSET :keep")
+    /**
+     * 超出保留条数的最旧记录 id。
+     * 不用 LIMIT -1 OFFSET，避免 Room 解析负 LIMIT。
+     */
+    @Query(
+        """
+        SELECT id FROM search_history
+        WHERE id NOT IN (
+            SELECT id FROM search_history ORDER BY searchedAt DESC LIMIT :keep
+        )
+        """
+    )
     suspend fun idsBeyond(keep: Int): List<Long>
 
     @Query("DELETE FROM search_history WHERE id IN (:ids)")

@@ -110,6 +110,7 @@ fun UniFeedApp(
             isSearching = state.isSearchingArticles,
             showSummary = prefs.listShowSummary,
             onQueryChange = viewModel::setArticleSearchQuery,
+            onSubmitQuery = viewModel::submitArticleSearch,
             onBack = viewModel::closeArticleSearch,
             onEntryClick = { clicked ->
                 restoreProgressOnOpen = true
