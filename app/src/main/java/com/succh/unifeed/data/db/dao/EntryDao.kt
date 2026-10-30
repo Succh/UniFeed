@@ -42,4 +42,19 @@ interface EntryDao {
 
     @Query("DELETE FROM entries WHERE feedId = :feedId")
     suspend fun deleteByFeed(feedId: Long)
+
+    /**
+     * 全文搜索全部已订阅源文章：标题、摘要、正文均走 LIKE。
+     * pattern 需已转义 % / _，由仓库层负责。
+     */
+    @Query(
+        """
+        SELECT * FROM entries
+        WHERE title LIKE '%' || :pattern || '%' ESCAPE '\'
+           OR IFNULL(summary, '') LIKE '%' || :pattern || '%' ESCAPE '\'
+           OR IFNULL(content, '') LIKE '%' || :pattern || '%' ESCAPE '\'
+        ORDER BY publishedAt DESC
+        """
+    )
+    suspend fun searchAll(pattern: String): List<Entry>
 }

@@ -4,6 +4,7 @@ import com.succh.unifeed.data.db.AppDatabase
 import com.succh.unifeed.data.db.entity.Entry
 import com.succh.unifeed.data.db.entity.Feed
 import com.succh.unifeed.data.db.entity.Folder
+import com.succh.unifeed.data.db.entity.SearchHistory
 import com.succh.unifeed.data.model.FeedPreview
 import com.succh.unifeed.data.model.ParsedEntry
 import com.succh.unifeed.data.model.ParsedFeed
@@ -17,6 +18,7 @@ import com.succh.unifeed.data.rss.RssParser
 import com.succh.unifeed.data.rss.RsshubCatalog
 import com.succh.unifeed.data.rss.RsshubEndpoints
 import com.succh.unifeed.data.rss.RsshubNamespace
+import com.succh.unifeed.data.search.EntrySearch
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
@@ -39,6 +41,7 @@ class FeedRepository(
     private val feedDao = db.feedDao()
     private val entryDao = db.entryDao()
     private val folderDao = db.folderDao()
+    private val searchHistoryDao = db.searchHistoryDao()
 
     /**
      * 后台抓取失败时向 UI 暴露错误信息，避免静默丢掉异常。
@@ -86,6 +89,45 @@ class FeedRepository(
     fun observeFeeds(): Flow<List<Feed>> = feedDao.observeAll()
     fun observeAllEntries(): Flow<List<Entry>> = entryDao.observeAll()
     fun observeUnreadCount(): Flow<Int> = entryDao.observeUnreadCount()
+
+    /**
+     * 跨全部已订阅源搜索文章，覆盖标题、摘要、正文。
+     * 不依赖当前列表筛选（源/未读/收藏）。
+     */
+    suspend fun searchEntries(rawQuery: String): List<Entry> {
+        val query = EntrySearch.normalizeQuery(rawQuery)
+        if (query.isEmpty()) return emptyList()
+        return entryDao.searchAll(EntrySearch.escapeLike(query))
+    }
+
+    fun observeSearchHistory(): Flow<List<SearchHistory>> = searchHistoryDao.observeAll()
+
+    /**
+     * 记录一次搜索：同词刷新时间戳顶到最前，超出上限裁掉最旧记录。
+     */
+    suspend fun recordSearchHistory(rawQuery: String) {
+        val query = EntrySearch.normalizeQuery(rawQuery)
+        if (query.isEmpty()) return
+        val now = System.currentTimeMillis()
+        val existing = searchHistoryDao.getByQuery(query)
+        if (existing != null) {
+            searchHistoryDao.update(existing.copy(searchedAt = now))
+        } else {
+            searchHistoryDao.insert(SearchHistory(query = query, searchedAt = now))
+        }
+        val overflow = searchHistoryDao.idsBeyond(MAX_SEARCH_HISTORY)
+        if (overflow.isNotEmpty()) {
+            searchHistoryDao.deleteByIds(overflow)
+        }
+    }
+
+    suspend fun deleteSearchHistory(id: Long) {
+        searchHistoryDao.deleteById(id)
+    }
+
+    suspend fun clearSearchHistory() {
+        searchHistoryDao.deleteAll()
+    }
 
     suspend fun discoverFeeds(input: String): Result<List<DiscoveredFeed>> {
         return try {
@@ -526,6 +568,7 @@ class FeedRepository(
 
     private companion object {
         const val MAX_SUMMARY_LENGTH = 200
+        const val MAX_SEARCH_HISTORY = 20
 
         /** 去 HTML 标签，预编译复用（每次抓取要跑上百篇） */
         val HTML_TAG = Regex("<[^>]+>")

@@ -92,7 +92,8 @@ fun ReaderScreen(
     restoreProgress: Boolean = true,
     onSwitchEntry: (Entry) -> Unit = {},
     onSaveProgress: (Long, Float) -> Unit = { _, _ -> },
-    onMarkRead: (Entry) -> Unit = {}
+    onMarkRead: (Entry) -> Unit = {},
+    highlightQuery: String? = null
 ) {
     val colors = MaterialTheme.colorScheme
     var showAaPanel by remember { mutableStateOf(false) }
@@ -133,7 +134,8 @@ fun ReaderScreen(
     val articleHtml = remember(
         entry.content, entry.summary, entry.title, entry.imageUrl, feedTitle, feedFaviconUrl,
         prefs.fontSize, prefs.lineHeight, prefs.theme,
-        prefs.showImages, prefs.serifFont, prefs.justifyText
+        prefs.showImages, prefs.serifFont, prefs.justifyText,
+        highlightQuery
     ) {
         ArticleHtmlBuilder.build(
             title = entry.title,
@@ -144,7 +146,8 @@ fun ReaderScreen(
             prefs = prefs,
             feedTitle = feedTitle,
             feedFaviconUrl = feedFaviconUrl,
-            coverImageUrl = entry.imageUrl
+            coverImageUrl = entry.imageUrl,
+            highlightQuery = highlightQuery
         )
     }
     val baseUrl = entry.link?.takeIf { it.startsWith("http") }
