@@ -54,15 +54,18 @@ object ArticleHtmlBuilder {
         val bodyLh = lineHeight
         return """
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: $fontFamily; font-size: ${fontSize}px; line-height: $bodyLh; color: ${p.fg}; background: $pageBg; padding: 0 0 48px; word-wrap: break-word; $textAlign -webkit-text-size-adjust: 100%; }
-.article { padding: 0 20px 8px; background: linear-gradient(to bottom, ${p.bg}00 0%, ${p.bg}cc 28px, ${p.bg}ee 64px, ${p.bg}f2 100%); }
+body { font-family: $fontFamily; font-size: ${fontSize}px; line-height: $bodyLh; color: ${p.fg}; background: $pageBg; padding: 0 0 48px; word-wrap: break-word; overflow-x: hidden; $textAlign -webkit-text-size-adjust: 100%; }
+.article { padding: 0 20px 8px; overflow-x: hidden; max-width: 100%; background: linear-gradient(to bottom, ${p.bg}00 0%, ${p.bg}cc 28px, ${p.bg}ee 64px, ${p.bg}f2 100%); }
 $imgRule
 a { color: ${p.link}; text-decoration: none; }
 p { margin: 0 0 1.1em 0; text-indent: 0; line-height: $bodyLh; }
 h1.headline { font-size: 1.75em; line-height: 1.28; font-weight: 800; letter-spacing: -0.02em; margin: 8px 0 12px 0; }
 h1, h2, h3, h4 { margin: 24px 0 12px 0; line-height: 1.35; }
 pre, code { font-family: Menlo, Consolas, monospace; font-size: 0.85em; background: ${p.codeBg}; border-radius: 6px; color: ${p.fg}; }
-pre { padding: 16px; overflow-x: auto; margin: 16px 0; white-space: pre-wrap; word-wrap: break-word; }
+/* 长代码不换行、不截断，由外层 .code-scroll 横向滚动 */
+.code-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; margin: 16px 0; border-radius: 6px; background: ${p.codeBg}; }
+pre { padding: 16px; margin: 0; overflow: visible; white-space: pre; word-wrap: normal; overflow-wrap: normal; word-break: normal; background: transparent; }
+pre code { display: block; padding: 0; background: transparent; white-space: pre; word-wrap: normal; overflow-wrap: normal; word-break: normal; }
 code { padding: 2px 6px; }
 blockquote { border-left: 4px solid ${p.link}; margin: 20px 0; padding: 4px 0 4px 16px; color: ${p.quote}; background: transparent; }
 table { width: 100%; border-collapse: collapse; margin: 16px 0; }
@@ -205,7 +208,7 @@ $orig
     /**
      * 正文 HTML 归一化：去脚本/样式，图片/链接相对地址补全为绝对地址。
      */
-    private fun normalize(html: String, baseUrl: String?): String {
+    internal fun normalize(html: String, baseUrl: String?): String {
         if (html.isBlank()) return "<p>（无正文内容）</p>"
         return try {
             val doc: Document
@@ -243,9 +246,23 @@ $orig
                 if (href.isNotBlank()) a.attr("href", href)
             }
 
+            // 3) 代码块：包一层横向滚动容器，长行保持原样不换行、不截断
+            wrapCodeBlocks(doc)
+
             doc.body().html()
         } catch (_: Exception) {
             "<p>${escape(html)}</p>"
+        }
+    }
+
+    /** 独立 pre 外包 .code-scroll，避免长代码把正文撑破或被挤换行 */
+    private fun wrapCodeBlocks(doc: Document) {
+        doc.select("pre").forEach { pre ->
+            if (pre.parent()?.hasClass("code-scroll") == true) return@forEach
+            val wrap = Element("div")
+            wrap.addClass("code-scroll")
+            pre.replaceWith(wrap)
+            wrap.appendChild(pre)
         }
     }
 
