@@ -17,6 +17,36 @@ import java.util.regex.Pattern
  */
 object ArticleHtmlBuilder {
 
+    /** 占位封面点击后才写入 src 并播放，正文里的脚本已在 normalize 中剥掉 */
+    private const val MEDIA_CLICK_JS = """
+document.addEventListener('click', function (ev) {
+  var ph = ev.target.closest('.media-ph');
+  if (!ph || ph.classList.contains('is-on')) return;
+  ph.classList.add('is-on');
+  var kind = ph.getAttribute('data-kind') || 'video';
+  if (kind === 'iframe') {
+    var src = ph.getAttribute('data-src') || '';
+    if (!src) return;
+    var f = document.createElement('iframe');
+    f.src = src;
+    f.setAttribute('allowfullscreen', '');
+    f.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture');
+    ph.appendChild(f);
+    return;
+  }
+  var media = ph.querySelector(kind) || ph.querySelector('video, audio');
+  if (!media) return;
+  var ds = media.getAttribute('data-src');
+  if (ds) media.setAttribute('src', ds);
+  var sources = media.querySelectorAll('source[data-src]');
+  for (var i = 0; i < sources.length; i++) {
+    sources[i].setAttribute('src', sources[i].getAttribute('data-src'));
+  }
+  if (media.load) media.load();
+  if (media.play) { try { media.play(); } catch (e) {} }
+}, true);
+"""
+
     private data class Palette(
         val bg: String, val fg: String, val muted: String,
         val border: String, val codeBg: String, val link: String, val quote: String,
@@ -82,6 +112,17 @@ hr { border: none; border-top: 1px solid ${p.border}; margin: 20px 0; }
 .hero::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(to bottom, ${p.bg}22 0%, ${p.bg}66 48%, ${p.bg} 100%); }
 .orig { display: block; margin: 32px auto 8px; padding: 10px 20px; text-align: center; border: 1px solid ${p.border}; border-radius: 20px; color: ${p.link}; font-size: 15px; }
 mark.search-hit { background: ${p.mark}; color: inherit; padding: 0 2px; border-radius: 2px; }
+/* 音视频先出占位封面，点按后再插入真实控件，避免正文留白 */
+.media-ph { margin: 16px 0; border-radius: 12px; overflow: hidden; background: ${p.codeBg}; }
+.media-poster { position: relative; display: flex; align-items: center; justify-content: center; width: 100%; min-height: 180px; background-color: ${p.codeBg}; background-position: center; background-size: cover; background-repeat: no-repeat; cursor: pointer; }
+.media-ph[data-kind="audio"] .media-poster { min-height: 96px; }
+.media-play { width: 64px; height: 64px; border-radius: 50%; background: rgba(0,0,0,.55); position: relative; flex-shrink: 0; }
+.media-play::after { content: ""; position: absolute; left: 24px; top: 18px; border-style: solid; border-width: 14px 0 14px 24px; border-color: transparent transparent transparent #fff; }
+.media-caption { position: absolute; right: 12px; bottom: 10px; color: ${p.muted}; font-size: 13px; }
+.media-ph.is-on .media-poster { display: none; }
+.media-ph video, .media-ph audio { width: 100%; display: none; }
+.media-ph.is-on video, .media-ph.is-on audio { display: block; }
+.media-ph.is-on iframe { display: block; width: 100%; min-height: 200px; border: 0; aspect-ratio: 16 / 9; }
 """.trimIndent()
     }
 
@@ -142,6 +183,7 @@ $byline
 $body
 $orig
 </div>
+<script>${MEDIA_CLICK_JS}</script>
 </body></html>"""
     }
 
@@ -219,7 +261,8 @@ $orig
             } else {
                 return "<p>${escape(html)}</p>"
             }
-            doc.select("script,style,ins,iframe,noscript,form,button,input").remove()
+            // iframe 留给后面改成占位封面，脚本/表单仍去掉
+            doc.select("script,style,ins,noscript,form,button,input").remove()
 
             // 1) 图片：懒加载属性补全 → src；各种相对地址 → 绝对地址；加 referrerpolicy 防防盗链
             doc.select("img").forEach { img ->
@@ -252,6 +295,8 @@ $orig
             wrapCodeBlocks(doc)
             // 4) 宽表格：包一层横向滚动容器，列宽跟内容走，表头与单元格对齐
             wrapWideTables(doc)
+            // 5) 音视频/嵌入：先出带播放标识的封面，点按后再加载
+            wrapMediaPlaceholders(doc, baseUrl)
 
             doc.body().html()
         } catch (_: Exception) {
@@ -281,6 +326,77 @@ $orig
             wrap.appendChild(table)
         }
     }
+
+    /**
+     * 把 video/audio/iframe 收成占位封面：去掉立即加载的 src，封面带播放三角。
+     * 真正的控件在点击后由 MEDIA_CLICK_JS 插入或补 src。
+     */
+    private fun wrapMediaPlaceholders(doc: Document, baseUrl: String?) {
+        doc.select("video, audio").forEach { el ->
+            if (el.parent()?.hasClass("media-ph") == true) return@forEach
+            deferMediaSrc(el, baseUrl)
+            val kind = el.tagName().lowercase()
+            val poster = el.attr("poster").takeIf { it.isNotBlank() }?.let { absolutize(it, baseUrl) }.orEmpty()
+            if (poster.isNotBlank()) el.attr("poster", poster)
+            val wrap = mediaShell(kind, poster, caption = if (kind == "audio") "音频" else "视频")
+            el.replaceWith(wrap)
+            wrap.appendChild(el)
+        }
+        doc.select("iframe").forEach { el ->
+            if (el.parent()?.hasClass("media-ph") == true) return@forEach
+            val src = absolutize(el.attr("src").ifBlank { el.attr("data-src") }, baseUrl)
+            if (src.isBlank() || !(src.startsWith("http://") || src.startsWith("https://"))) {
+                el.remove()
+                return@forEach
+            }
+            val wrap = mediaShell("iframe", iframePosterUrl(src).orEmpty(), caption = "视频")
+            wrap.attr("data-src", src)
+            el.replaceWith(wrap)
+        }
+    }
+
+    private fun mediaShell(kind: String, poster: String, caption: String): Element {
+        val wrap = Element("div")
+        wrap.addClass("media-ph")
+        wrap.attr("data-kind", kind)
+        val cover = Element("div")
+        cover.addClass("media-poster")
+        if (poster.isNotBlank()) {
+            cover.attr("style", "background-image:url('${escapeAttr(poster)}')")
+        }
+        cover.appendElement("span").addClass("media-play")
+        cover.appendElement("span").addClass("media-caption").text(caption)
+        wrap.appendChild(cover)
+        return wrap
+    }
+
+    /** 抽掉立即请求的 src，改挂 data-src，点按后再写回去 */
+    private fun deferMediaSrc(el: Element, baseUrl: String?) {
+        val own = el.attr("src")
+        if (own.isNotBlank()) {
+            el.attr("data-src", absolutize(own, baseUrl))
+            el.removeAttr("src")
+        }
+        el.select("source").forEach { source ->
+            val s = source.attr("src").ifBlank { source.attr("data-src") }
+            if (s.isNotBlank()) {
+                source.attr("data-src", absolutize(s, baseUrl))
+                source.removeAttr("src")
+            }
+        }
+        el.attr("preload", "none")
+        el.attr("controls", "true")
+        el.attr("playsinline", "true")
+    }
+
+    internal fun iframePosterUrl(src: String): String? {
+        val id = YT_ID.find(src)?.groupValues?.getOrNull(1) ?: return null
+        return "https://img.youtube.com/vi/$id/hqdefault.jpg"
+    }
+
+    private val YT_ID = Regex(
+        """(?:youtube\.com/(?:embed/|shorts/|watch\?(?:.*&)?v=)|youtu\.be/)([A-Za-z0-9_-]{6,})"""
+    )
 
     private fun absolutize(url: String, baseUrl: String?): String {
         if (url.isBlank()) return ""

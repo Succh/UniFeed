@@ -93,7 +93,8 @@ object ContentExtractor {
      */
     private fun cleanNode(el: Element): Element {
         // 移除脚本、样式、广告
-        el.select("script, style, noscript, iframe, .ad, .ads, .advertisement, .banner, .promo, .comment, .comments, .footer, .share, .social, .related, #ad, #comments").remove()
+        // iframe 留给阅读器做成音视频占位封面，这里只清脚本广告
+        el.select("script, style, noscript, .ad, .ads, .advertisement, .banner, .promo, .comment, .comments, .footer, .share, .social, .related, #ad, #comments").remove()
         return el
     }
 }
