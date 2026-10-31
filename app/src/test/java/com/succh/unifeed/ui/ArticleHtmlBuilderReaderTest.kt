@@ -120,4 +120,58 @@ class ArticleHtmlBuilderReaderTest {
         assertEquals("https://img.youtube.com/vi/dQw4w9wgGcQ/hqdefault.jpg", poster)
         assertTrue(ph.selectFirst(".media-poster")!!.attr("style").contains(poster!!))
     }
+
+    @Test
+    fun footnotesWireRefAndBackLink() {
+        val html = ArticleHtmlBuilder.normalize(
+            """
+            <p>正文<sup><a href="#fn1">1</a></sup></p>
+            <ol class="footnotes"><li id="fn1">注释内容</li></ol>
+            """.trimIndent(),
+            "https://example.com/post"
+        )
+        val doc = Jsoup.parseBodyFragment(html)
+        val ref = doc.selectFirst("a.fn-ref")
+        requireNotNull(ref)
+        assertEquals("#fn1", ref.attr("href"))
+        assertTrue(ref.id().isNotBlank())
+        val def = doc.getElementById("fn1")
+        requireNotNull(def)
+        assertTrue(def.hasClass("fn-def"))
+        val back = def.selectFirst("a.fn-back")
+        requireNotNull(back)
+        assertEquals("#${ref.id()}", back.attr("href"))
+        assertEquals("↩", back.text())
+    }
+
+    @Test
+    fun footnotesKeepExistingBackrefAndCollapseAbsoluteHash() {
+        val html = ArticleHtmlBuilder.normalize(
+            """
+            <p>见<sup><a href="https://example.com/post#fn:1">1</a></sup></p>
+            <div id="fn:1">说明 <a class="footnote-backref" href="#fnref1">↩</a></div>
+            """.trimIndent(),
+            "https://example.com/post"
+        )
+        val doc = Jsoup.parseBodyFragment(html)
+        val ref = doc.selectFirst("a.fn-ref")
+        requireNotNull(ref)
+        assertEquals("#fn:1", ref.attr("href"))
+        val back = doc.selectFirst("a.fn-back")
+        requireNotNull(back)
+        assertEquals("#${ref.id()}", back.attr("href"))
+        assertEquals(1, doc.select("a.fn-back").size)
+    }
+
+    @Test
+    fun ordinaryInPageHashIsNotTreatedAsFootnote() {
+        val html = ArticleHtmlBuilder.normalize(
+            """<p><a href="#intro">目录</a></p><h2 id="intro">引言</h2>""",
+            null
+        )
+        val doc = Jsoup.parseBodyFragment(html)
+        assertEquals(0, doc.select("a.fn-ref").size)
+        assertEquals(0, doc.select("a.fn-back").size)
+        assertEquals("#intro", doc.selectFirst("a[href=#intro]")!!.attr("href"))
+    }
 }

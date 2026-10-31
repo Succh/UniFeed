@@ -17,34 +17,68 @@ import java.util.regex.Pattern
  */
 object ArticleHtmlBuilder {
 
-    /** 占位封面点击后才写入 src 并播放，正文里的脚本已在 normalize 中剥掉 */
-    private const val MEDIA_CLICK_JS = """
-document.addEventListener('click', function (ev) {
-  var ph = ev.target.closest('.media-ph');
-  if (!ph || ph.classList.contains('is-on')) return;
-  ph.classList.add('is-on');
-  var kind = ph.getAttribute('data-kind') || 'video';
-  if (kind === 'iframe') {
-    var src = ph.getAttribute('data-src') || '';
-    if (!src) return;
-    var f = document.createElement('iframe');
-    f.src = src;
-    f.setAttribute('allowfullscreen', '');
-    f.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture');
-    ph.appendChild(f);
-    return;
+    /** 正文脚本：音视频点按加载 + 脚注跳转/返回。原文 script 已在 normalize 中剥掉 */
+    private const val PAGE_JS = """
+(function () {
+  var fnStack = [];
+  function flashScroll(el) {
+    if (!el) return;
+    el.classList.remove('fn-flash');
+    void el.offsetWidth;
+    el.classList.add('fn-flash');
+    if (el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
-  var media = ph.querySelector(kind) || ph.querySelector('video, audio');
-  if (!media) return;
-  var ds = media.getAttribute('data-src');
-  if (ds) media.setAttribute('src', ds);
-  var sources = media.querySelectorAll('source[data-src]');
-  for (var i = 0; i < sources.length; i++) {
-    sources[i].setAttribute('src', sources[i].getAttribute('data-src'));
+  function hashId(href) {
+    if (!href) return '';
+    var i = href.indexOf('#');
+    if (i < 0) return '';
+    try { return decodeURIComponent(href.slice(i + 1)); } catch (e) { return href.slice(i + 1); }
   }
-  if (media.load) media.load();
-  if (media.play) { try { media.play(); } catch (e) {} }
-}, true);
+  document.addEventListener('click', function (ev) {
+    var ph = ev.target.closest('.media-ph');
+    if (ph && !ph.classList.contains('is-on')) {
+      ph.classList.add('is-on');
+      var kind = ph.getAttribute('data-kind') || 'video';
+      if (kind === 'iframe') {
+        var src = ph.getAttribute('data-src') || '';
+        if (!src) return;
+        var f = document.createElement('iframe');
+        f.src = src;
+        f.setAttribute('allowfullscreen', '');
+        f.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture');
+        ph.appendChild(f);
+        return;
+      }
+      var media = ph.querySelector(kind) || ph.querySelector('video, audio');
+      if (!media) return;
+      var ds = media.getAttribute('data-src');
+      if (ds) media.setAttribute('src', ds);
+      var sources = media.querySelectorAll('source[data-src]');
+      for (var i = 0; i < sources.length; i++) {
+        sources[i].setAttribute('src', sources[i].getAttribute('data-src'));
+      }
+      if (media.load) media.load();
+      if (media.play) { try { media.play(); } catch (e) {} }
+      return;
+    }
+    var a = ev.target.closest('a');
+    if (!a) return;
+    var href = a.getAttribute('href') || '';
+    var id = hashId(href);
+    if (!id) return;
+    var target = document.getElementById(id);
+    if (!target) return;
+    ev.preventDefault();
+    var isBack = a.classList.contains('fn-back') || a.classList.contains('footnote-backref') || a.classList.contains('reversefootnote');
+    if (isBack) {
+      var origin = fnStack.length ? fnStack.pop() : target;
+      flashScroll(origin);
+      return;
+    }
+    fnStack.push(a);
+    flashScroll(target);
+  }, true);
+})();
 """
 
     private data class Palette(
@@ -123,6 +157,12 @@ mark.search-hit { background: ${p.mark}; color: inherit; padding: 0 2px; border-
 .media-ph video, .media-ph audio { width: 100%; display: none; }
 .media-ph.is-on video, .media-ph.is-on audio { display: block; }
 .media-ph.is-on iframe { display: block; width: 100%; min-height: 200px; border: 0; aspect-ratio: 16 / 9; }
+/* 脚注标记可点；定义处高亮并可点返回 */
+a.fn-ref, sup a { color: ${p.link}; text-decoration: none; }
+.fn-def { scroll-margin-top: 80px; }
+.fn-flash { background: ${p.mark}; transition: background 1.2s ease; }
+a.fn-back { margin-left: 8px; font-size: 0.95em; }
+.footnotes { margin-top: 28px; padding-top: 12px; border-top: 1px solid ${p.border}; font-size: 0.92em; color: ${p.muted}; }
 """.trimIndent()
     }
 
@@ -183,7 +223,7 @@ $byline
 $body
 $orig
 </div>
-<script>${MEDIA_CLICK_JS}</script>
+<script>${PAGE_JS}</script>
 </body></html>"""
     }
 
@@ -285,10 +325,14 @@ $orig
                 img.attr("referrerpolicy", "no-referrer")
             }
 
-            // 2) 链接：相对地址 → 绝对地址
+            // 2) 链接：相对地址 → 绝对地址；同页 hash（含带 base 的绝对脚注链接）收成 #id
             doc.select("a[href]").forEach { a ->
                 val href = absolutize(a.attr("href"), baseUrl)
-                if (href.isNotBlank()) a.attr("href", href)
+                val local = sameDocumentHash(href, baseUrl)
+                when {
+                    local != null -> a.attr("href", local)
+                    href.isNotBlank() -> a.attr("href", href)
+                }
             }
 
             // 3) 代码块：包一层横向滚动容器，长行保持原样不换行、不截断
@@ -297,6 +341,8 @@ $orig
             wrapWideTables(doc)
             // 5) 音视频/嵌入：先出带播放标识的封面，点按后再加载
             wrapMediaPlaceholders(doc, baseUrl)
+            // 6) 脚注：标记可点、目标可定位，并补上返回原文的链接
+            wireFootnotes(doc)
 
             doc.body().html()
         } catch (_: Exception) {
@@ -329,7 +375,7 @@ $orig
 
     /**
      * 把 video/audio/iframe 收成占位封面：去掉立即加载的 src，封面带播放三角。
-     * 真正的控件在点击后由 MEDIA_CLICK_JS 插入或补 src。
+     * 真正的控件在点击后由 PAGE_JS 插入或补 src。
      */
     private fun wrapMediaPlaceholders(doc: Document, baseUrl: String?) {
         doc.select("video, audio").forEach { el ->
@@ -397,6 +443,112 @@ $orig
     private val YT_ID = Regex(
         """(?:youtube\.com/(?:embed/|shorts/|watch\?(?:.*&)?v=)|youtu\.be/)([A-Za-z0-9_-]{6,})"""
     )
+
+    /**
+     * 识别脚注引用：给引用和定义打标，缺返回链时补 ↩。
+     * 点按跳转由 PAGE_JS 处理，这样带 baseURL 的 WebView 不会整页跳走。
+     */
+    private fun wireFootnotes(doc: Document) {
+        val refs = doc.select("a[href^=#]").filter { isFootnoteRef(it) }
+        refs.forEachIndexed { index, a ->
+            val id = fragmentId(a.attr("href")) ?: return@forEachIndexed
+            a.addClass("fn-ref")
+            val refId = ensureRefId(a, index, doc)
+            val target = findByFragment(doc, id) ?: return@forEachIndexed
+            target.addClass("fn-def")
+            if (target.id().isBlank()) target.attr("id", id)
+            ensureBackref(target, refId)
+        }
+    }
+
+    private fun isFootnoteRef(a: Element): Boolean {
+        val href = a.attr("href")
+        val frag = fragmentId(href)?.lowercase() ?: return false
+        val cls = a.className().lowercase()
+        val parent = a.parent()
+        val parentTag = parent?.tagName()?.lowercase().orEmpty()
+        val parentCls = parent?.className()?.lowercase().orEmpty()
+        if (parentTag == "sup") return true
+        if (listOf("footnote", "fnref", "fn-ref", "noteref").any { it in cls }) return true
+        if ("footnote" in parentCls) return true
+        if (frag.startsWith("fn") || frag.startsWith("cite_note") || frag.startsWith("_ftn") ||
+            frag.startsWith("endnote") || frag.contains("footnote") || frag.startsWith("note-")
+        ) return true
+        val target = findByFragment(a.ownerDocument() ?: return false, frag)
+        return target != null && isFootnoteDef(target)
+    }
+
+    private fun isFootnoteDef(el: Element): Boolean {
+        val id = el.id().lowercase()
+        val cls = el.className().lowercase()
+        if (id.startsWith("fn") || id.startsWith("cite_note") || id.startsWith("_ftn") ||
+            id.contains("footnote") || "footnote" in cls
+        ) return true
+        return el.parents().any { p ->
+            val pc = p.className().lowercase()
+            val pt = p.tagName().lowercase()
+            "footnote" in pc || pt == "aside"
+        }
+    }
+
+    private fun ensureRefId(a: Element, index: Int, doc: Document): String {
+        if (a.id().isNotBlank()) return a.id()
+        val parent = a.parent()
+        if (parent != null && parent.tagName().equals("sup", true) && parent.id().isNotBlank()) {
+            return parent.id()
+        }
+        val gen = uniqueId(doc, "fnref-$index")
+        a.attr("id", gen)
+        return gen
+    }
+
+    private fun ensureBackref(def: Element, refId: String) {
+        if (refId.isBlank()) return
+        val existing = def.select("a.fn-back, a.footnote-backref, a.reversefootnote, a[href^=#_ftnref]").first()
+        if (existing != null) {
+            existing.addClass("fn-back")
+            existing.attr("href", "#$refId")
+            if (existing.text().isBlank()) existing.text("↩")
+            return
+        }
+        def.appendElement("a")
+            .addClass("fn-back")
+            .attr("href", "#$refId")
+            .attr("aria-label", "返回正文")
+            .text("↩")
+    }
+
+    private fun findByFragment(doc: Document, id: String): Element? {
+        if (id.isBlank()) return null
+        doc.getElementById(id)?.let { return it }
+        return doc.select("[name]").firstOrNull { it.attr("name") == id }
+    }
+
+    private fun uniqueId(doc: Document, base: String): String {
+        if (doc.getElementById(base) == null) return base
+        var i = 1
+        while (doc.getElementById("$base-$i") != null) i++
+        return "$base-$i"
+    }
+
+    private fun fragmentId(href: String): String? {
+        val i = href.indexOf('#')
+        if (i < 0 || i == href.lastIndex) return null
+        val raw = href.substring(i + 1).substringBefore('&').substringBefore('?')
+        return raw.takeIf { it.isNotBlank() }
+    }
+
+    /** 同页锚点（#id 或 base#id）收成 #id，避免 WebView 带着文章 URL 整页跳走 */
+    private fun sameDocumentHash(href: String, baseUrl: String?): String? {
+        if (href.startsWith("#") && href.length > 1) return href
+        val hashIdx = href.indexOf('#')
+        if (hashIdx < 0 || hashIdx == href.lastIndex) return null
+        val before = href.substring(0, hashIdx)
+        if (baseUrl.isNullOrBlank()) return null
+        val base = baseUrl.substringBefore('#')
+        if (before == baseUrl || before == base) return href.substring(hashIdx)
+        return null
+    }
 
     private fun absolutize(url: String, baseUrl: String?): String {
         if (url.isBlank()) return ""
