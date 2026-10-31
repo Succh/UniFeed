@@ -68,8 +68,10 @@ pre { padding: 16px; margin: 0; overflow: visible; white-space: pre; word-wrap: 
 pre code { display: block; padding: 0; background: transparent; white-space: pre; word-wrap: normal; overflow-wrap: normal; word-break: normal; }
 code { padding: 2px 6px; }
 blockquote { border-left: 4px solid ${p.link}; margin: 20px 0; padding: 4px 0 4px 16px; color: ${p.quote}; background: transparent; }
-table { width: 100%; border-collapse: collapse; margin: 16px 0; }
-th, td { border: 1px solid ${p.border}; padding: 8px 12px; }
+/* 宽表不挤列、不撑破正文，由 .table-scroll 横向滚动，表头与单元格同列宽 */
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; margin: 16px 0; }
+table { width: max-content; min-width: 100%; border-collapse: collapse; margin: 0; table-layout: auto; }
+th, td { border: 1px solid ${p.border}; padding: 8px 12px; white-space: nowrap; vertical-align: top; }
 ul, ol { margin: 12px 0 1.1em; padding-left: 24px; }
 hr { border: none; border-top: 1px solid ${p.border}; margin: 20px 0; }
 .source-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: ${p.muted}; margin-bottom: 4px; }
@@ -248,6 +250,8 @@ $orig
 
             // 3) 代码块：包一层横向滚动容器，长行保持原样不换行、不截断
             wrapCodeBlocks(doc)
+            // 4) 宽表格：包一层横向滚动容器，列宽跟内容走，表头与单元格对齐
+            wrapWideTables(doc)
 
             doc.body().html()
         } catch (_: Exception) {
@@ -263,6 +267,18 @@ $orig
             wrap.addClass("code-scroll")
             pre.replaceWith(wrap)
             wrap.appendChild(pre)
+        }
+    }
+
+    /** 顶层 table 外包 .table-scroll，宽表横向滑动，不把正文撑破 */
+    private fun wrapWideTables(doc: Document) {
+        doc.select("table").forEach { table ->
+            if (table.parent()?.hasClass("table-scroll") == true) return@forEach
+            if (table.parents().any { it.tagName().equals("table", ignoreCase = true) }) return@forEach
+            val wrap = Element("div")
+            wrap.addClass("table-scroll")
+            table.replaceWith(wrap)
+            wrap.appendChild(table)
         }
     }
 
