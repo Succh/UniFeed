@@ -184,7 +184,7 @@ fun ReaderScreen(
                         )
                     }
                     IconButton(onClick = { onShare(entry) }) {
-                        Icon(Icons.Filled.Share, contentDescription = "分享")
+                        Icon(Icons.Filled.Share, contentDescription = "分享文章")
                     }
                     IconButton(onClick = { onOpenBrowser(entry) }) {
                         Icon(Icons.Filled.OpenInBrowser, contentDescription = "浏览器打开")

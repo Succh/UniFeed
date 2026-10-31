@@ -417,8 +417,12 @@ class UniFeedViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    suspend fun exportOpml(): String = withContext(Dispatchers.IO) {
+    /**
+     * 导出全部订阅为 OPML。没有订阅源时返回 null，调用方应提示空态、不要写空文件。
+     */
+    suspend fun exportOpml(): String? = withContext(Dispatchers.IO) {
         val feeds = repo.observeFeeds().first()
+        if (feeds.isEmpty()) return@withContext null
         val folders = repo.observeFolders().first()
         OpmlManager.export(feeds, folders)
     }

@@ -45,10 +45,12 @@ object OpmlManager {
     }
 
     private fun feedOutline(feed: Feed): String {
+        // 标准 OPML 订阅项：title 给人看，xmlUrl 是源地址
         val title = escape(feed.title.ifEmpty { feed.url })
         val xmlUrl = escape(feed.url)
         val htmlUrl = escape(feed.siteUrl ?: "")
-        return "<outline text=\"$title\" xmlUrl=\"$xmlUrl\" htmlUrl=\"$htmlUrl\"/>"
+        val htmlAttr = if (htmlUrl.isNotEmpty()) " htmlUrl=\"$htmlUrl\"" else ""
+        return "<outline type=\"rss\" text=\"$title\" title=\"$title\" xmlUrl=\"$xmlUrl\"$htmlAttr/>"
     }
 
     private fun escape(s: String): String {

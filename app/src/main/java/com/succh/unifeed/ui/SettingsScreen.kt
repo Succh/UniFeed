@@ -72,21 +72,18 @@ fun SettingsScreen(
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
 
-    val exportLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("text/xml")
-    ) { uri ->
-        if (uri != null) {
-            scope.launch {
-                val opml = withContext(Dispatchers.IO) { vm.exportOpml() }
-                val ok = withContext(Dispatchers.IO) {
-                    runCatching {
-                        context.contentResolver.openOutputStream(uri)?.use { out ->
-                            out.write(opml.toByteArray(Charsets.UTF_8))
-                        } ?: throw IllegalStateException("无法打开输出流")
-                    }.isSuccess
-                }
-                snackbarHostState.showSnackbar(if (ok) "OPML 导出完成" else "OPML 导出失败")
+    fun exportOpml() {
+        scope.launch {
+            val opml = withContext(Dispatchers.IO) { vm.exportOpml() }
+            if (opml == null) {
+                // 无订阅时明确提示，不生成空 OPML
+                snackbarHostState.showSnackbar("当前没有订阅源，无法导出")
+                return@launch
             }
+            runCatching { OpmlShare.share(context, opml) }
+                .onFailure {
+                    snackbarHostState.showSnackbar("OPML 导出失败")
+                }
         }
     }
 
@@ -237,12 +234,12 @@ fun SettingsScreen(
             GlassPanel {
                 Text("OPML", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "导入导出订阅列表，方便备份与迁移。",
+                    "导入或导出订阅列表。导出走系统分享/保存，每个源含 title 与 xmlUrl。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { exportLauncher.launch("unifeed.opml") }) {
+                    Button(onClick = { exportOpml() }) {
                         Text("导出 OPML")
                     }
                     Button(onClick = { importLauncher.launch("text/xml") }) {
