@@ -9,6 +9,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.succh.unifeed.UniFeedApp
+import com.succh.unifeed.ui.ReaderPrefs
 import java.util.concurrent.TimeUnit
 
 /**
@@ -33,19 +34,39 @@ class RefreshWorker(
     companion object {
         private const val WORK_NAME = "auto-refresh"
 
-        /** 调度周期性刷新（ExistingPeriodicWorkPolicy.KEEP：已存在则保留） */
-        fun schedule(context: Context, intervalHours: Long) {
+        /**
+         * 按当前偏好重新调度：手动档取消周期任务；其余档用 REPLACE 覆盖旧间隔。
+         * 仅 Wi-Fi 开启时约束为 UNMETERED，否则 CONNECTED。
+         */
+        fun reschedule(context: Context, prefs: ReaderPrefs) {
+            schedule(context, prefs.refreshInterval, prefs.refreshWifiOnly)
+        }
+
+        fun schedule(
+            context: Context,
+            interval: RefreshInterval,
+            wifiOnly: Boolean
+        ) {
+            if (!interval.isPeriodic) {
+                cancel(context)
+                return
+            }
+            val networkType = if (wifiOnly) {
+                NetworkType.UNMETERED
+            } else {
+                NetworkType.CONNECTED
+            }
             val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .setRequiredNetworkType(networkType)
                 .build()
             val request = PeriodicWorkRequestBuilder<RefreshWorker>(
-                intervalHours, TimeUnit.HOURS
+                interval.minutes, TimeUnit.MINUTES
             )
                 .setConstraints(constraints)
                 .build()
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 WORK_NAME,
-                ExistingPeriodicWorkPolicy.KEEP,
+                ExistingPeriodicWorkPolicy.REPLACE,
                 request
             )
         }

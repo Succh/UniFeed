@@ -11,10 +11,8 @@ class UniFeedApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        // 启动时恢复后台自动刷新调度
-        if (appPrefs.autoRefreshEnabled) {
-            RefreshWorker.schedule(this, appPrefs.autoRefreshIntervalHours)
-        }
+        // 启动时按当前档位与 Wi-Fi 约束恢复后台刷新
+        RefreshWorker.reschedule(this, appPrefs)
     }
 
     val database: AppDatabase by lazy {

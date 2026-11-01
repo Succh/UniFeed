@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import com.succh.unifeed.data.rss.RsshubEndpoints
+import com.succh.unifeed.data.work.RefreshInterval
 
 enum class ReaderTheme { LIGHT, SEPIA, DARK }
 
@@ -96,22 +97,41 @@ class ReaderPrefs(context: Context) {
     val effectiveRsshubInstance: String
         get() = rsshubInstance ?: RsshubEndpoints.DEFAULT
 
-    /** 后台自动刷新开关 */
-    private val _autoRefreshEnabled = mutableStateOf(sp.getBoolean(KEY_AUTO_REFRESH_ENABLED, false))
+    /** 后台自动刷新开关；手动档时视为关闭周期任务 */
+    private val _autoRefreshEnabled = mutableStateOf(loadAutoRefreshEnabled())
     var autoRefreshEnabled: Boolean
         get() = _autoRefreshEnabled.value
         set(value) {
             _autoRefreshEnabled.value = value
             sp.edit().putBoolean(KEY_AUTO_REFRESH_ENABLED, value).apply()
+            if (!value) {
+                refreshInterval = RefreshInterval.MANUAL
+            } else if (refreshInterval == RefreshInterval.MANUAL) {
+                refreshInterval = RefreshInterval.HOUR_1
+            }
         }
 
-    /** 后台自动刷新间隔（小时） */
-    private val _autoRefreshIntervalHours = mutableStateOf(sp.getLong(KEY_AUTO_REFRESH_INTERVAL_HOURS, 6L))
-    var autoRefreshIntervalHours: Long
-        get() = _autoRefreshIntervalHours.value
+    /** 后台自动刷新间隔档位（含手动） */
+    private val _refreshInterval = mutableStateOf(loadRefreshInterval())
+    var refreshInterval: RefreshInterval
+        get() = _refreshInterval.value
         set(value) {
-            _autoRefreshIntervalHours.value = value
-            sp.edit().putLong(KEY_AUTO_REFRESH_INTERVAL_HOURS, value).apply()
+            _refreshInterval.value = value
+            sp.edit().putString(KEY_REFRESH_INTERVAL, value.name).apply()
+            val enabled = value.isPeriodic
+            if (_autoRefreshEnabled.value != enabled) {
+                _autoRefreshEnabled.value = enabled
+                sp.edit().putBoolean(KEY_AUTO_REFRESH_ENABLED, enabled).apply()
+            }
+        }
+
+    /** 仅 Wi-Fi 时后台刷新：开启后任务约束为非计费网络 */
+    private val _refreshWifiOnly = mutableStateOf(sp.getBoolean(KEY_REFRESH_WIFI_ONLY, false))
+    var refreshWifiOnly: Boolean
+        get() = _refreshWifiOnly.value
+        set(value) {
+            _refreshWifiOnly.value = value
+            sp.edit().putBoolean(KEY_REFRESH_WIFI_ONLY, value).apply()
         }
 
     private fun loadTheme(): ReaderTheme {
@@ -124,6 +144,25 @@ class ReaderPrefs(context: Context) {
             return sp.getBoolean(KEY_MARK_READ_ON_OPEN, false)
         }
         return sp.getBoolean(KEY_AUTO_READ, false)
+    }
+
+    /**
+     * 优先读新档位键；没有则用旧开关 + 小时数平滑迁移，并写回新键。
+     */
+    private fun loadRefreshInterval(): RefreshInterval {
+        val stored = sp.getString(KEY_REFRESH_INTERVAL, null)
+        if (stored != null) {
+            return RefreshInterval.fromName(stored)
+        }
+        val enabled = sp.getBoolean(KEY_AUTO_REFRESH_ENABLED, false)
+        val hours = sp.getLong(KEY_AUTO_REFRESH_INTERVAL_HOURS, 6L)
+        val migrated = RefreshInterval.fromLegacyHours(enabled, hours)
+        sp.edit().putString(KEY_REFRESH_INTERVAL, migrated.name).apply()
+        return migrated
+    }
+
+    private fun loadAutoRefreshEnabled(): Boolean {
+        return loadRefreshInterval().isPeriodic
     }
 
     private companion object {
@@ -139,5 +178,7 @@ class ReaderPrefs(context: Context) {
         const val KEY_RSSHUB_INSTANCE = "rsshub_instance"
         const val KEY_AUTO_REFRESH_ENABLED = "auto_refresh_enabled"
         const val KEY_AUTO_REFRESH_INTERVAL_HOURS = "auto_refresh_interval_hours"
+        const val KEY_REFRESH_INTERVAL = "refresh_interval"
+        const val KEY_REFRESH_WIFI_ONLY = "refresh_wifi_only"
     }
 }
