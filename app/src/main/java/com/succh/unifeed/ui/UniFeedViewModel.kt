@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.succh.unifeed.UniFeedApp
 import com.succh.unifeed.data.db.entity.Entry
 import com.succh.unifeed.data.db.entity.Feed
+import com.succh.unifeed.data.db.entity.FilterRule
 import com.succh.unifeed.data.db.entity.Folder
 import com.succh.unifeed.data.db.entity.SearchHistory
 import com.succh.unifeed.data.model.FeedPreview
@@ -54,7 +55,8 @@ data class UniFeedUiState(
     val articleSearchQuery: String = "",
     val articleSearchResults: List<Entry> = emptyList(),
     val isSearchingArticles: Boolean = false,
-    val searchHistory: List<SearchHistory> = emptyList()
+    val searchHistory: List<SearchHistory> = emptyList(),
+    val filterRules: List<FilterRule> = emptyList()
 )
 
 enum class FilterMode { ALL, UNREAD, STARRED }
@@ -88,6 +90,11 @@ class UniFeedViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             repo.observeSearchHistory().collect { history ->
                 _uiState.update { it.copy(searchHistory = history) }
+            }
+        }
+        viewModelScope.launch {
+            repo.observeFilterRules().collect { rules ->
+                _uiState.update { it.copy(filterRules = rules) }
             }
         }
         viewModelScope.launch {
@@ -217,6 +224,18 @@ class UniFeedViewModel(application: Application) : AndroidViewModel(application)
 
     fun renameFeed(feedId: Long, newTitle: String) {
         viewModelScope.launch { repo.renameFeed(feedId, newTitle) }
+    }
+
+    fun addFilterRule(keyword: String, action: String, feedId: Long? = null) {
+        viewModelScope.launch { repo.addFilterRule(keyword, action, feedId) }
+    }
+
+    fun deleteFilterRule(id: Long) {
+        viewModelScope.launch { repo.deleteFilterRule(id) }
+    }
+
+    fun setApplyGlobalFilter(feedId: Long, apply: Boolean) {
+        viewModelScope.launch { repo.setApplyGlobalFilter(feedId, apply) }
     }
 
     fun clearDiscovery() {
