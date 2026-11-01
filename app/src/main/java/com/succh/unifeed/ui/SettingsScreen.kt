@@ -41,6 +41,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.succh.unifeed.data.rss.RsshubEndpoints
+import com.succh.unifeed.data.work.RefreshInterval
 import com.succh.unifeed.data.work.RefreshWorker
 import com.succh.unifeed.ui.theme.FoloDimens
 import com.succh.unifeed.ui.theme.GlassPanel
@@ -251,36 +252,48 @@ fun SettingsScreen(
             GlassPanel {
                 Text("后台自动刷新", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "定期在后台抓取新文章（需要联网）。",
+                    "按所选间隔在后台抓取新文章。选「手动」后只保留下拉刷新，不再跑周期任务。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                SwitchSetting("启用后台刷新", prefs.autoRefreshEnabled) {
-                    prefs.autoRefreshEnabled = it
-                    if (it) {
-                        RefreshWorker.schedule(context, prefs.autoRefreshIntervalHours)
-                    } else {
-                        RefreshWorker.cancel(context)
-                    }
-                }
-                if (prefs.autoRefreshEnabled) {
-                    Text("刷新间隔", style = MaterialTheme.typography.labelMedium)
+                Text("刷新间隔", style = MaterialTheme.typography.labelMedium)
+                RefreshInterval.entries.chunked(2).forEach { rowSlots ->
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(2L, 6L, 12L, 24L).forEach { hours ->
-                            val selected = prefs.autoRefreshIntervalHours == hours
+                        rowSlots.forEach { slot ->
+                            val selected = prefs.refreshInterval == slot
                             FilterChip(
                                 selected = selected,
                                 onClick = {
-                                    prefs.autoRefreshIntervalHours = hours
-                                    RefreshWorker.schedule(context, hours)
+                                    prefs.refreshInterval = slot
+                                    RefreshWorker.reschedule(context, prefs)
                                 },
-                                label = { Text("${hours}小时") },
+                                label = { Text(refreshIntervalLabel(slot)) },
                                 colors = glassChipColors(),
                                 border = glassChipBorder(selected)
                             )
                         }
                     }
                 }
+                if (prefs.refreshInterval == RefreshInterval.MANUAL) {
+                    Text(
+                        "手动：关闭后台周期刷新，需要时在列表下拉即可。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                SwitchSetting("仅 Wi-Fi 时后台刷新", prefs.refreshWifiOnly) {
+                    prefs.refreshWifiOnly = it
+                    RefreshWorker.reschedule(context, prefs)
+                }
+                Text(
+                    if (prefs.refreshWifiOnly) {
+                        "仅 Wi-Fi：后台任务只在非计费网络（通常是 Wi-Fi）时运行，避免消耗移动流量。"
+                    } else {
+                        "关闭后，任意可用网络都会触发后台刷新。"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
 
             GlassPanel {
@@ -293,6 +306,13 @@ fun SettingsScreen(
             }
         }
     }
+}
+
+private fun refreshIntervalLabel(interval: RefreshInterval): String = when (interval) {
+    RefreshInterval.MINUTES_15 -> "15 分钟"
+    RefreshInterval.MINUTES_30 -> "30 分钟"
+    RefreshInterval.HOUR_1 -> "1 小时"
+    RefreshInterval.MANUAL -> "手动"
 }
 
 @Composable
