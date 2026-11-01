@@ -25,5 +25,7 @@ data class Entry(
      */
     val lastReadPosition: Float = 0f,
     /** 最近一次写入阅读进度的时间戳（epoch millis） */
-    val lastReadAt: Long = 0L
+    val lastReadAt: Long = 0L,
+    /** 关键字规则命中「隐藏」时为 true，列表不展示且不计入未读 */
+    val isHidden: Boolean = false
 )

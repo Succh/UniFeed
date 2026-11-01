@@ -9,6 +9,13 @@ interface EntryDao {
     @Query("SELECT * FROM entries ORDER BY publishedAt DESC")
     fun observeAll(): Flow<List<Entry>>
 
+    /** 列表展示用：被隐藏的文章不出现 */
+    @Query("SELECT * FROM entries WHERE isHidden = 0 ORDER BY publishedAt DESC")
+    fun observeVisible(): Flow<List<Entry>>
+
+    @Query("SELECT * FROM entries WHERE feedId = :feedId")
+    suspend fun getByFeed(feedId: Long): List<Entry>
+
     /** 一次查出该源已有 guid，供刷新路径批量去重 */
     @Query("SELECT guid FROM entries WHERE feedId = :feedId")
     suspend fun getGuidsByFeed(feedId: Long): List<String>
@@ -18,6 +25,9 @@ interface EntryDao {
 
     @Update
     suspend fun update(entry: Entry)
+
+    @Update
+    suspend fun updateAll(entries: List<Entry>)
 
     @Query("UPDATE entries SET isRead = 1 WHERE id = :id")
     suspend fun markRead(id: Long)
@@ -37,7 +47,7 @@ interface EntryDao {
     @Query("UPDATE entries SET lastReadPosition = :position, lastReadAt = :readAt WHERE id = :id")
     suspend fun updateReadProgress(id: Long, position: Float, readAt: Long)
 
-    @Query("SELECT COUNT(*) FROM entries WHERE isRead = 0")
+    @Query("SELECT COUNT(*) FROM entries WHERE isRead = 0 AND isHidden = 0")
     fun observeUnreadCount(): Flow<Int>
 
     @Query("DELETE FROM entries WHERE feedId = :feedId")
@@ -50,9 +60,11 @@ interface EntryDao {
     @Query(
         """
         SELECT * FROM entries
-        WHERE title LIKE '%' || :pattern || '%' ESCAPE '\'
-           OR IFNULL(summary, '') LIKE '%' || :pattern || '%' ESCAPE '\'
-           OR IFNULL(content, '') LIKE '%' || :pattern || '%' ESCAPE '\'
+        WHERE isHidden = 0 AND (
+            title LIKE '%' || :pattern || '%' ESCAPE '\'
+            OR IFNULL(summary, '') LIKE '%' || :pattern || '%' ESCAPE '\'
+            OR IFNULL(content, '') LIKE '%' || :pattern || '%' ESCAPE '\'
+        )
         ORDER BY publishedAt DESC
         """
     )

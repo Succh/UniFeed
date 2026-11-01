@@ -3,8 +3,11 @@ package com.succh.unifeed.data.repository
 import com.succh.unifeed.data.db.AppDatabase
 import com.succh.unifeed.data.db.entity.Entry
 import com.succh.unifeed.data.db.entity.Feed
+import com.succh.unifeed.data.db.entity.FilterRule
 import com.succh.unifeed.data.db.entity.Folder
 import com.succh.unifeed.data.db.entity.SearchHistory
+import com.succh.unifeed.data.filter.ContentFilter
+import com.succh.unifeed.data.filter.FilterAction
 import com.succh.unifeed.data.model.FeedPreview
 import com.succh.unifeed.data.model.ParsedEntry
 import com.succh.unifeed.data.model.ParsedFeed
@@ -42,6 +45,7 @@ class FeedRepository(
     private val entryDao = db.entryDao()
     private val folderDao = db.folderDao()
     private val searchHistoryDao = db.searchHistoryDao()
+    private val filterRuleDao = db.filterRuleDao()
 
     /**
      * 后台抓取失败时向 UI 暴露错误信息，避免静默丢掉异常。
@@ -87,8 +91,9 @@ class FeedRepository(
         RsshubEndpoints.isRsshubUrl(url, extraHost = customRsshubInstance?.let(FeedUrls::hostOf))
 
     fun observeFeeds(): Flow<List<Feed>> = feedDao.observeAll()
-    fun observeAllEntries(): Flow<List<Entry>> = entryDao.observeAll()
+    fun observeAllEntries(): Flow<List<Entry>> = entryDao.observeVisible()
     fun observeUnreadCount(): Flow<Int> = entryDao.observeUnreadCount()
+    fun observeFilterRules(): Flow<List<FilterRule>> = filterRuleDao.observeAll()
 
     /**
      * 跨全部已订阅源搜索文章，覆盖标题、摘要、正文。
@@ -386,7 +391,39 @@ class FeedRepository(
 
     suspend fun deleteFeed(feed: Feed) {
         entryDao.deleteByFeed(feed.id)
+        filterRuleDao.deleteByFeed(feed.id)
         feedDao.delete(feed)
+    }
+
+    /**
+     * 新增关键字规则。空白关键字直接忽略。
+     * 写入后立即回扫已有文章，使列表与未读数立刻生效。
+     */
+    suspend fun addFilterRule(keyword: String, action: String, feedId: Long? = null): Boolean {
+        val trimmed = keyword.trim()
+        if (trimmed.isEmpty()) return false
+        val resolvedAction = when (action) {
+            FilterRule.ACTION_HIDE -> FilterRule.ACTION_HIDE
+            else -> FilterRule.ACTION_MARK_READ
+        }
+        filterRuleDao.insert(
+            FilterRule(keyword = trimmed, action = resolvedAction, feedId = feedId)
+        )
+        reapplyFilters(feedId)
+        return true
+    }
+
+    suspend fun deleteFilterRule(id: Long) {
+        val all = filterRuleDao.getAll()
+        val target = all.firstOrNull { it.id == id } ?: return
+        filterRuleDao.deleteById(id)
+        reapplyFilters(target.feedId)
+    }
+
+    /** 源级开关：关闭后该源不再套用全局规则，专属规则仍生效 */
+    suspend fun setApplyGlobalFilter(feedId: Long, apply: Boolean) {
+        feedDao.setApplyGlobalFilter(feedId, apply)
+        reapplyFilters(feedId)
     }
 
     suspend fun markRead(entry: Entry) {
@@ -532,9 +569,11 @@ class FeedRepository(
     private suspend fun saveEntries(feedId: Long, parsed: ParsedFeed) {
         val existingGuids = entryDao.getGuidsByFeed(feedId).toHashSet()
         val now = System.currentTimeMillis()
+        val rules = applicableRules(feedId)
         val newcomers = parsed.entries
             .filter { it.guid.isNotBlank() && it.guid !in existingGuids }
             .map { pe ->
+                val action = ContentFilter.match(pe.title, rules)
                 Entry(
                     feedId = feedId,
                     guid = pe.guid,
@@ -545,11 +584,49 @@ class FeedRepository(
                     author = pe.author,
                     publishedAt = pe.publishedAt,
                     fetchedAt = now,
-                    imageUrl = pe.imageUrl
+                    imageUrl = pe.imageUrl,
+                    isRead = action == FilterAction.MARK_READ,
+                    isHidden = action == FilterAction.HIDE
                 )
             }
         if (newcomers.isNotEmpty()) {
             entryDao.insertAll(newcomers)
+        }
+    }
+
+    private suspend fun applicableRules(feedId: Long): List<FilterRule> {
+        val feed = feedDao.getById(feedId)
+        val applyGlobal = feed?.applyGlobalFilter ?: true
+        return ContentFilter.rulesForFeed(feedId, applyGlobal, filterRuleDao.getAll())
+    }
+
+    /**
+     * 规则变更后回扫文章：隐藏可随规则撤销，已读一旦标上不再改回未读。
+     * [scopeFeedId] 为空表示全局规则变动，只回扫仍套用全局规则的源。
+     */
+    private suspend fun reapplyFilters(scopeFeedId: Long?) {
+        val allRules = filterRuleDao.getAll()
+        val feeds = if (scopeFeedId != null) {
+            listOfNotNull(feedDao.getById(scopeFeedId))
+        } else {
+            feedDao.observeAll().first().filter { it.applyGlobalFilter }
+        }
+        for (feed in feeds) {
+            val rules = ContentFilter.rulesForFeed(feed.id, feed.applyGlobalFilter, allRules)
+            val entries = entryDao.getByFeed(feed.id)
+            val dirty = mutableListOf<Entry>()
+            for (entry in entries) {
+                val action = ContentFilter.match(entry.title, rules)
+                val hidden = action == FilterAction.HIDE
+                val read = entry.isRead || action == FilterAction.MARK_READ
+                if (hidden != entry.isHidden || read != entry.isRead) {
+                    dirty += entry.copy(isHidden = hidden, isRead = read)
+                }
+            }
+            if (dirty.isNotEmpty()) {
+                entryDao.updateAll(dirty)
+            }
+            feedDao.updateUnreadCount(feed.id)
         }
     }
 

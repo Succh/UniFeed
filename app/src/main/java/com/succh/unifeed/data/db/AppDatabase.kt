@@ -6,16 +6,18 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.succh.unifeed.data.db.dao.EntryDao
 import com.succh.unifeed.data.db.dao.FeedDao
+import com.succh.unifeed.data.db.dao.FilterRuleDao
 import com.succh.unifeed.data.db.dao.FolderDao
 import com.succh.unifeed.data.db.dao.SearchHistoryDao
 import com.succh.unifeed.data.db.entity.Entry
 import com.succh.unifeed.data.db.entity.Feed
+import com.succh.unifeed.data.db.entity.FilterRule
 import com.succh.unifeed.data.db.entity.Folder
 import com.succh.unifeed.data.db.entity.SearchHistory
 
 @Database(
-    entities = [Feed::class, Entry::class, Folder::class, SearchHistory::class],
-    version = 4,
+    entities = [Feed::class, Entry::class, Folder::class, SearchHistory::class, FilterRule::class],
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -23,6 +25,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun entryDao(): EntryDao
     abstract fun folderDao(): FolderDao
     abstract fun searchHistoryDao(): SearchHistoryDao
+    abstract fun filterRuleDao(): FilterRuleDao
 
     companion object {
         /** v1 → v2：文章封面图 + 订阅源刷新状态字段 */
@@ -57,6 +60,24 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL(
                     "CREATE UNIQUE INDEX IF NOT EXISTS index_search_history_query ON search_history (query)"
                 )
+            }
+        }
+
+        /** v4 → v5：关键字屏蔽规则表 + 文章隐藏标记 + 源级全局过滤开关 */
+        val MIGRATION_4_5: Migration = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS filter_rules (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        keyword TEXT NOT NULL,
+                        action TEXT NOT NULL,
+                        feedId INTEGER
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("ALTER TABLE entries ADD COLUMN isHidden INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE feeds ADD COLUMN applyGlobalFilter INTEGER NOT NULL DEFAULT 1")
             }
         }
     }
