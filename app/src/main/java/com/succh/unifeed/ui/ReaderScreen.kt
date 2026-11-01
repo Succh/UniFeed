@@ -233,7 +233,8 @@ fun ReaderScreen(
                                 ViewGroup.LayoutParams.MATCH_PARENT
                             )
                             setBackgroundColor(android.graphics.Color.TRANSPARENT)
-                            settings.javaScriptEnabled = false
+                            // 仅用于占位封面点按后加载音视频；正文脚本已在 HTML 归一化时剥掉
+                            settings.javaScriptEnabled = true
                             settings.loadWithOverviewMode = true
                             settings.useWideViewPort = true
                             settings.domStorageEnabled = true
@@ -241,6 +242,7 @@ fun ReaderScreen(
                             settings.loadsImagesAutomatically = true
                             settings.blockNetworkImage = false
                             settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                            settings.mediaPlaybackRequiresUserGesture = true
                             onProgress = { ratio ->
                                 currentProgress = ratio
                                 progressByEntry[entry.id] = ratio
