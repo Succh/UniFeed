@@ -91,7 +91,8 @@ fun FeedListScreen(
     searchQuery: String = "",
     onSearchQueryChange: (String) -> Unit = {},
     onRefreshFeed: (Feed) -> Unit = {},
-    latestTitles: Map<Long, String> = emptyMap()
+    latestTitles: Map<Long, String> = emptyMap(),
+    onSetApplyGlobalFilter: (Long, Boolean) -> Unit = { _, _ -> }
 ) {
     var showFolderManager by remember { mutableStateOf(false) }
     var moveTarget by remember { mutableStateOf<Feed?>(null) }
@@ -196,7 +197,10 @@ fun FeedListScreen(
                             onDelete = { onDeleteFeed(feed) },
                             onMove = { moveTarget = feed },
                             onRename = { renamingFeed = feed },
-                            onRefresh = { onRefreshFeed(feed) }
+                            onRefresh = { onRefreshFeed(feed) },
+                            onToggleGlobalFilter = {
+                                onSetApplyGlobalFilter(feed.id, !feed.applyGlobalFilter)
+                            }
                         )
                     }
                 }
@@ -254,7 +258,8 @@ private fun FeedItem(
     onDelete: () -> Unit,
     onMove: () -> Unit,
     onRename: () -> Unit = {},
-    onRefresh: () -> Unit = {}
+    onRefresh: () -> Unit = {},
+    onToggleGlobalFilter: () -> Unit = {}
 ) {
     val colors = MaterialTheme.colorScheme
     var menuExpanded by remember { mutableStateOf(false) }
@@ -405,6 +410,15 @@ private fun FeedItem(
                             onMove()
                         },
                         leadingIcon = { Icon(Icons.Default.Folder, contentDescription = null) }
+                    )
+                    DropdownMenuItem(
+                        text = {
+                            Text(if (feed.applyGlobalFilter) "关闭全局过滤" else "开启全局过滤")
+                        },
+                        onClick = {
+                            menuExpanded = false
+                            onToggleGlobalFilter()
+                        }
                     )
                     DropdownMenuItem(
                         text = { Text("删除") },

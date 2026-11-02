@@ -198,9 +198,9 @@ fun UniFeedApp(
             onSearchQueryChange = viewModel::setSearchQuery,
             onMarkRead = viewModel::markRead,
             onMarkUnread = viewModel::markUnread,
-            onRefreshFeed = { feed -> viewModel.refreshFeedById(feed.id) }
-        )
-}
+            onRefreshFeed = { feed -> viewModel.refreshFeedById(feed.id) },
+            onSetApplyGlobalFilter = viewModel::setApplyGlobalFilter
+        }
 
 @Composable
 private fun MainTabScreen(
@@ -229,7 +229,8 @@ private fun MainTabScreen(
     onSearchQueryChange: (String) -> Unit = {},
     onMarkRead: (Entry) -> Unit = {},
     onMarkUnread: (Entry) -> Unit = {},
-    onRefreshFeed: (Feed) -> Unit = {}
+    onRefreshFeed: (Feed) -> Unit = {},
+    onSetApplyGlobalFilter: (Long, Boolean) -> Unit = { _, _ -> }
 ) {
     val glow = glassGlowColor()
     Scaffold(
@@ -286,6 +287,7 @@ private fun MainTabScreen(
                 onSearchQueryChange = onSearchQueryChange,
                 onRefreshFeed = onRefreshFeed,
                 latestTitles = state.latestTitles,
+                onSetApplyGlobalFilter = onSetApplyGlobalFilter,
                 modifier = Modifier.padding(padding)
             )
             1 -> {

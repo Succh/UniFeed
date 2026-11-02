@@ -29,6 +29,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,6 +41,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.succh.unifeed.data.db.entity.FilterRule
 import com.succh.unifeed.data.rss.RsshubEndpoints
 import com.succh.unifeed.data.work.RefreshInterval
 import com.succh.unifeed.data.work.RefreshWorker
@@ -57,7 +59,7 @@ import java.net.URL
 /** 公共实例快捷选择：直接取自抓取层的镜像清单，顺序即竞速优先级 */
 private val RSSHUB_PRESETS = RsshubEndpoints.MIRRORS
 
-/** 设置 Tab：列表设置、RSSHub 实例配置、关于。分组走玻璃面板。 */
+/** 设置 Tab：列表设置、内容过滤、RSSHub 实例配置、关于。分组走玻璃面板。 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
@@ -70,8 +72,11 @@ fun SettingsScreen(
     var testing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val vm: UniFeedViewModel = viewModel()
+    val uiState by vm.uiState.collectAsState()
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
+    var keywordInput by remember { mutableStateOf("") }
+    var addAction by remember { mutableStateOf(FilterRule.ACTION_MARK_READ) }
 
     fun exportOpml() {
         scope.launch {
@@ -150,6 +155,104 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+
+            GlassPanel {
+                Text("内容过滤", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "标题含关键字时自动处理。隐藏：不出现在列表且不计未读；自动标已读：仍可见但标为已读。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = keywordInput,
+                    onValueChange = { keywordInput = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(FoloDimens.SearchRadius),
+                    colors = fieldColors,
+                    placeholder = { Text("输入要屏蔽的关键字") }
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = addAction == FilterRule.ACTION_MARK_READ,
+                        onClick = { addAction = FilterRule.ACTION_MARK_READ },
+                        label = { Text("自动标已读") },
+                        colors = glassChipColors(),
+                        border = glassChipBorder(addAction == FilterRule.ACTION_MARK_READ)
+                    )
+                    FilterChip(
+                        selected = addAction == FilterRule.ACTION_HIDE,
+                        onClick = { addAction = FilterRule.ACTION_HIDE },
+                        label = { Text("隐藏") },
+                        colors = glassChipColors(),
+                        border = glassChipBorder(addAction == FilterRule.ACTION_HIDE)
+                    )
+                }
+                Button(
+                    onClick = {
+                        val keyword = keywordInput.trim()
+                        if (keyword.isNotEmpty()) {
+                            vm.addFilterRule(keyword, addAction)
+                            keywordInput = ""
+                        }
+                    },
+                    enabled = keywordInput.trim().isNotEmpty()
+                ) {
+                    Text("添加规则")
+                }
+                val globalRules = uiState.filterRules.filter { it.feedId == null }
+                val feedRules = uiState.filterRules.filter { it.feedId != null }
+                val feedTitleById = uiState.feeds.associate { it.id to it.title }
+                if (uiState.filterRules.isEmpty()) {
+                    Text(
+                        "暂无屏蔽规则。添加后对新文章立即生效，也会回扫已有文章。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    if (globalRules.isNotEmpty()) {
+                        Text("全局规则", style = MaterialTheme.typography.labelMedium)
+                        globalRules.forEach { rule ->
+                            FilterRuleRow(
+                                rule = rule,
+                                subtitle = null,
+                                onActionChange = { action -> vm.updateFilterRule(rule.copy(action = action)) },
+                                onDelete = { vm.deleteFilterRule(rule.id) }
+                            )
+                        }
+                    }
+                    if (feedRules.isNotEmpty()) {
+                        Text("订阅源专属规则", style = MaterialTheme.typography.labelMedium)
+                        feedRules.forEach { rule ->
+                            FilterRuleRow(
+                                rule = rule,
+                                subtitle = feedTitleById[rule.feedId] ?: "未知订阅源",
+                                onActionChange = { action -> vm.updateFilterRule(rule.copy(action = action)) },
+                                onDelete = { vm.deleteFilterRule(rule.id) }
+                            )
+                        }
+                    }
+                }
+                Text("订阅源", style = MaterialTheme.typography.labelMedium)
+                Text(
+                    "关闭某源的「套用全局过滤」后，该源只走专属规则。可在订阅源菜单里开关。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (uiState.feeds.isEmpty()) {
+                    Text(
+                        "还没有订阅源。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    uiState.feeds.forEach { feed ->
+                        SwitchSetting("套用全局过滤 · ${feed.title}", feed.applyGlobalFilter) {
+                            vm.setApplyGlobalFilter(feed.id, it)
+                        }
+                    }
+                }
             }
 
             GlassPanel {
@@ -322,7 +425,55 @@ private fun SwitchSetting(label: String, value: Boolean, onValueChange: (Boolean
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(label, style = MaterialTheme.typography.bodyLarge)
+        Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
         Switch(checked = value, onCheckedChange = onValueChange)
+    }
+}
+
+/** 单条关键字规则：两档动作切换 + 删除 */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FilterRuleRow(
+    rule: FilterRule,
+    subtitle: String?,
+    onActionChange: (String) -> Unit,
+    onDelete: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(rule.keyword, style = MaterialTheme.typography.bodyLarge)
+                if (!subtitle.isNullOrBlank()) {
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            TextButton(onClick = onDelete) {
+                Text("删除", color = MaterialTheme.colorScheme.error)
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = rule.action == FilterRule.ACTION_MARK_READ,
+                onClick = { onActionChange(FilterRule.ACTION_MARK_READ) },
+                label = { Text("自动标已读") },
+                colors = glassChipColors(),
+                border = glassChipBorder(rule.action == FilterRule.ACTION_MARK_READ)
+            )
+            FilterChip(
+                selected = rule.action == FilterRule.ACTION_HIDE,
+                onClick = { onActionChange(FilterRule.ACTION_HIDE) },
+                label = { Text("隐藏") },
+                colors = glassChipColors(),
+                border = glassChipBorder(rule.action == FilterRule.ACTION_HIDE)
+            )
+        }
     }
 }
