@@ -200,7 +200,8 @@ fun UniFeedApp(
             onMarkUnread = viewModel::markUnread,
             onRefreshFeed = { feed -> viewModel.refreshFeedById(feed.id) },
             onSetApplyGlobalFilter = viewModel::setApplyGlobalFilter
-        }
+        )
+}
 
 @Composable
 private fun MainTabScreen(
