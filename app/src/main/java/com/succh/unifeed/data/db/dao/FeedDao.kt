@@ -24,8 +24,11 @@ interface FeedDao {
     @Delete
     suspend fun delete(feed: Feed)
 
-    @Query("UPDATE feeds SET unreadCount = (SELECT COUNT(*) FROM entries WHERE feedId = :feedId AND isRead = 0) WHERE id = :feedId")
+    @Query("UPDATE feeds SET unreadCount = (SELECT COUNT(*) FROM entries WHERE feedId = :feedId AND isRead = 0 AND isHidden = 0) WHERE id = :feedId")
     suspend fun updateUnreadCount(feedId: Long)
+
+    @Query("UPDATE feeds SET applyGlobalFilter = :apply WHERE id = :feedId")
+    suspend fun setApplyGlobalFilter(feedId: Long, apply: Boolean)
 
     @Query("UPDATE feeds SET folderId = :folderId WHERE id = :feedId")
     suspend fun updateFolderId(feedId: Long, folderId: Long?)
