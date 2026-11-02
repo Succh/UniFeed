@@ -234,6 +234,11 @@ class UniFeedViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch { repo.deleteFilterRule(id) }
     }
 
+    /** 切换规则动作（自动标已读 / 隐藏）后由仓库回扫已有文章 */
+    fun updateFilterRule(rule: FilterRule) {
+        viewModelScope.launch { repo.updateFilterRule(rule) }
+    }
+
     fun setApplyGlobalFilter(feedId: Long, apply: Boolean) {
         viewModelScope.launch { repo.setApplyGlobalFilter(feedId, apply) }
     }

@@ -420,6 +420,21 @@ class FeedRepository(
         reapplyFilters(target.feedId)
     }
 
+    /**
+     * 更新已有规则（例如两档动作切换）后立即回扫，使列表与未读数立刻跟上。
+     */
+    suspend fun updateFilterRule(rule: FilterRule) {
+        if (rule.id <= 0L) return
+        val trimmed = rule.keyword.trim()
+        if (trimmed.isEmpty()) return
+        val resolvedAction = when (rule.action) {
+            FilterRule.ACTION_HIDE -> FilterRule.ACTION_HIDE
+            else -> FilterRule.ACTION_MARK_READ
+        }
+        filterRuleDao.update(rule.copy(keyword = trimmed, action = resolvedAction))
+        reapplyFilters(rule.feedId)
+    }
+
     /** 源级开关：关闭后该源不再套用全局规则，专属规则仍生效 */
     suspend fun setApplyGlobalFilter(feedId: Long, apply: Boolean) {
         feedDao.setApplyGlobalFilter(feedId, apply)
