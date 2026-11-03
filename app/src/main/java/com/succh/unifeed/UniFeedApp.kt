@@ -8,11 +8,14 @@ import com.succh.unifeed.data.cache.ImageCache
 import com.succh.unifeed.data.db.AppDatabase
 import com.succh.unifeed.data.repository.FeedRepository
 import com.succh.unifeed.data.work.RefreshWorker
+import com.succh.unifeed.desktop.UnreadBadge
+import com.succh.unifeed.desktop.UnreadWidgetProvider
 import com.succh.unifeed.ui.ReaderPrefs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class UniFeedApp : Application(), ImageLoaderFactory {
 
@@ -25,6 +28,15 @@ class UniFeedApp : Application(), ImageLoaderFactory {
         // 启动时按保留策略清一次旧文章
         appScope.launch {
             repository.cleanupOldArticles(appPrefs.articleRetention)
+        }
+        // 未读数变化后同步桌面角标和小部件（刷新、标已读都会走到这条 Flow）
+        appScope.launch {
+            repository.observeUnreadCount().collect { count ->
+                UnreadBadge.sync(this@UniFeedApp, count)
+                withContext(Dispatchers.Main) {
+                    UnreadWidgetProvider.requestUpdate(this@UniFeedApp)
+                }
+            }
         }
     }
 

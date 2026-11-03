@@ -464,6 +464,10 @@ class UniFeedViewModel(application: Application) : AndroidViewModel(application)
     suspend fun cleanupOldArticles(retention: ArticleRetention): Int =
         withContext(Dispatchers.IO) { repo.cleanupOldArticles(retention) }
 
+    /** 小部件点击打开文章：按 id 取一条，不依赖当前列表筛选 */
+    suspend fun loadEntry(id: Long): Entry? =
+        withContext(Dispatchers.IO) { repo.getEntry(id) }
+
     fun clearError() {
         _uiState.update { it.copy(error = null, subscribeError = null) }
     }

@@ -2,6 +2,7 @@ package com.succh.unifeed.data.db.dao
 
 import androidx.room.*
 import com.succh.unifeed.data.db.entity.Entry
+import com.succh.unifeed.desktop.UnreadWidgetItem
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -12,6 +13,9 @@ interface EntryDao {
     /** 列表展示用：被隐藏的文章不出现 */
     @Query("SELECT * FROM entries WHERE isHidden = 0 ORDER BY publishedAt DESC")
     fun observeVisible(): Flow<List<Entry>>
+
+    @Query("SELECT * FROM entries WHERE id = :id LIMIT 1")
+    suspend fun getById(id: Long): Entry?
 
     @Query("SELECT * FROM entries WHERE feedId = :feedId")
     suspend fun getByFeed(feedId: Long): List<Entry>
@@ -52,6 +56,22 @@ interface EntryDao {
 
     @Query("SELECT COUNT(*) FROM entries WHERE isRead = 0 AND isHidden = 0")
     fun observeUnreadCount(): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM entries WHERE isRead = 0 AND isHidden = 0")
+    suspend fun getUnreadCount(): Int
+
+    /** 桌面小部件：最新未读，被隐藏的不计入，与未读角标同一口径 */
+    @Query(
+        """
+        SELECT e.id AS id, e.title AS title, IFNULL(f.title, '') AS feedTitle, e.publishedAt AS publishedAt
+        FROM entries AS e
+        LEFT JOIN feeds AS f ON f.id = e.feedId
+        WHERE e.isRead = 0 AND e.isHidden = 0
+        ORDER BY e.publishedAt DESC
+        LIMIT :limit
+        """
+    )
+    suspend fun getLatestUnreadForWidget(limit: Int): List<UnreadWidgetItem>
 
     @Query("DELETE FROM entries WHERE feedId = :feedId")
     suspend fun deleteByFeed(feedId: Long)

@@ -154,6 +154,15 @@ class ReaderPrefs(context: Context) {
             sp.edit().putString(KEY_ARTICLE_RETENTION, value.name).apply()
         }
 
+    /** 桌面图标未读角标；默认开启，不支持的启动器上静默无效果 */
+    private val _unreadBadgeEnabled = mutableStateOf(sp.getBoolean(KEY_UNREAD_BADGE, true))
+    var unreadBadgeEnabled: Boolean
+        get() = _unreadBadgeEnabled.value
+        set(value) {
+            _unreadBadgeEnabled.value = value
+            sp.edit().putBoolean(KEY_UNREAD_BADGE, value).apply()
+        }
+
     private fun loadTheme(): ReaderTheme {
         val name = sp.getString(KEY_THEME, ReaderTheme.LIGHT.name)
         return ReaderTheme.entries.firstOrNull { it.name == name } ?: ReaderTheme.LIGHT
@@ -193,22 +202,31 @@ class ReaderPrefs(context: Context) {
         return ArticleRetention.fromName(sp.getString(KEY_ARTICLE_RETENTION, null))
     }
 
-    private companion object {
-        const val KEY_SIZE = "font_size"
-        const val KEY_LH = "line_height"
-        const val KEY_THEME = "reader_theme"
-        const val KEY_IMAGES = "show_images"
-        const val KEY_SERIF = "serif_font"
-        const val KEY_JUSTIFY = "justify_text"
-        const val KEY_LIST_SUMMARY = "list_summary"
-        const val KEY_AUTO_READ = "auto_read"
-        const val KEY_MARK_READ_ON_OPEN = "mark_read_on_open"
-        const val KEY_RSSHUB_INSTANCE = "rsshub_instance"
-        const val KEY_AUTO_REFRESH_ENABLED = "auto_refresh_enabled"
-        const val KEY_AUTO_REFRESH_INTERVAL_HOURS = "auto_refresh_interval_hours"
-        const val KEY_REFRESH_INTERVAL = "refresh_interval"
-        const val KEY_REFRESH_WIFI_ONLY = "refresh_wifi_only"
-        const val KEY_IMAGE_CACHE_LIMIT = "image_cache_limit"
-        const val KEY_ARTICLE_RETENTION = "article_retention"
+    companion object {
+        private const val PREFS_NAME = "unifeed_prefs"
+        private const val KEY_SIZE = "font_size"
+        private const val KEY_LH = "line_height"
+        private const val KEY_THEME = "reader_theme"
+        private const val KEY_IMAGES = "show_images"
+        private const val KEY_SERIF = "serif_font"
+        private const val KEY_JUSTIFY = "justify_text"
+        private const val KEY_LIST_SUMMARY = "list_summary"
+        private const val KEY_AUTO_READ = "auto_read"
+        private const val KEY_MARK_READ_ON_OPEN = "mark_read_on_open"
+        private const val KEY_RSSHUB_INSTANCE = "rsshub_instance"
+        private const val KEY_AUTO_REFRESH_ENABLED = "auto_refresh_enabled"
+        private const val KEY_AUTO_REFRESH_INTERVAL_HOURS = "auto_refresh_interval_hours"
+        private const val KEY_REFRESH_INTERVAL = "refresh_interval"
+        private const val KEY_REFRESH_WIFI_ONLY = "refresh_wifi_only"
+        private const val KEY_IMAGE_CACHE_LIMIT = "image_cache_limit"
+        private const val KEY_ARTICLE_RETENTION = "article_retention"
+        private const val KEY_UNREAD_BADGE = "unread_badge_enabled"
+
+        /** 直接读 SP，供角标同步在 IO 线程使用，不新建 Compose 状态 */
+        fun unreadBadgeEnabled(context: Context): Boolean {
+            return context.applicationContext
+                .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .getBoolean(KEY_UNREAD_BADGE, true)
+        }
     }
 }
