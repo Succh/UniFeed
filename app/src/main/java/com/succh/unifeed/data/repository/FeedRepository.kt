@@ -1,5 +1,7 @@
 package com.succh.unifeed.data.repository
 
+import com.succh.unifeed.data.cache.ArticleCleanup
+import com.succh.unifeed.data.cache.ArticleRetention
 import com.succh.unifeed.data.db.AppDatabase
 import com.succh.unifeed.data.db.entity.Entry
 import com.succh.unifeed.data.db.entity.Feed
@@ -387,6 +389,18 @@ class FeedRepository(
 
     suspend fun refreshAll() {
         feedDao.observeAll().first().forEach { refreshFeed(it.id) }
+    }
+
+    /**
+     * 按保留策略删除旧文章。只删已读、非收藏、非稍后读。
+     * NEVER 直接返回 0。返回实际删除条数。
+     */
+    suspend fun cleanupOldArticles(
+        retention: ArticleRetention,
+        nowMillis: Long = System.currentTimeMillis()
+    ): Int {
+        val cutoff = ArticleCleanup.cutoffMillis(retention, nowMillis) ?: return 0
+        return entryDao.deleteStaleRead(cutoff)
     }
 
     suspend fun deleteFeed(feed: Feed) {

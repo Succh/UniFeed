@@ -25,6 +25,8 @@ class RefreshWorker(
         return try {
             val app = applicationContext as UniFeedApp
             app.repository.refreshAll()
+            // 刷新后再按保留策略清旧文章，收藏/稍后读/未读都留下
+            app.repository.cleanupOldArticles(app.appPrefs.articleRetention)
             Result.success()
         } catch (_: Exception) {
             Result.retry()
