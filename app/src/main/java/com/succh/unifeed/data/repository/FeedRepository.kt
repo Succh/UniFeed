@@ -455,6 +455,10 @@ class FeedRepository(
         entryDao.setStarred(entry.id, starred)
     }
 
+    suspend fun setReadLater(entry: Entry, readLater: Boolean) {
+        entryDao.setReadLater(entry.id, readLater)
+    }
+
     /** 节流后由阅读器调用，写入 0~1 滚动比例与时间戳 */
     suspend fun saveReadProgress(entryId: Long, position: Float) {
         entryDao.updateReadProgress(
