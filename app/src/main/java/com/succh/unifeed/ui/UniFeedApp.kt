@@ -168,7 +168,19 @@ fun UniFeedApp(
 
     MainTabScreen(
             tab = tab,
-            onTabChange = { tab = it },
+            onTabChange = { newTab ->
+                when {
+                    newTab == 2 -> {
+                        if (state.filterMode != FilterMode.STARRED &&
+                            state.filterMode != FilterMode.READ_LATER
+                        ) {
+                            viewModel.enterLibrary(FilterMode.STARRED)
+                        }
+                    }
+                    tab == 2 -> viewModel.leaveLibrary()
+                }
+                tab = newTab
+            },
             state = state,
             prefs = prefs,
             snackbarHostState = snackbarHostState,
@@ -181,12 +193,14 @@ fun UniFeedApp(
             onDeleteFeed = viewModel::deleteFeed,
             onEntryClick = { clicked ->
                 restoreProgressOnOpen = true
-                readerList = if (tab == 2) state.entries.filter { it.isStarred } else state.entries
+                readerList = state.entries
                 selectedEntry = clicked
             },
             onStarToggle = viewModel::setStarred,
             onReadLaterToggle = viewModel::setReadLater,
             onFilter = viewModel::setFilter,
+            onLibraryFilter = viewModel::setLibraryFilter,
+            onSelectLibraryFeed = viewModel::setLibraryFeed,
             onRefresh = viewModel::refreshCurrentFeed,
             onMarkAllRead = viewModel::markAllRead,
             onRsshubInstanceChange = { updateRsshubInstance(it) },
@@ -220,6 +234,8 @@ private fun MainTabScreen(
     onStarToggle: (Entry, Boolean) -> Unit,
     onReadLaterToggle: (Entry, Boolean) -> Unit = { _, _ -> },
     onFilter: (FilterMode) -> Unit,
+    onLibraryFilter: (FilterMode) -> Unit = {},
+    onSelectLibraryFeed: (Long?) -> Unit = {},
     onRefresh: () -> Unit,
     onMarkAllRead: () -> Unit,
     onRsshubInstanceChange: (String?) -> Unit = {},
@@ -324,9 +340,20 @@ private fun MainTabScreen(
                 )
             }
             2 -> {
-                val starredEntries = remember(state.entries) { state.entries.filter { it.isStarred } }
+                // 切 tab 时 filterMode 可能尚未切到库视图，先在本地收一层，避免闪出全文
+                val libraryEntries = remember(state.entries, state.filterMode, state.libraryFeedId) {
+                    val feedId = state.libraryFeedId
+                    when (state.filterMode) {
+                        FilterMode.READ_LATER -> state.entries.filter {
+                            it.isReadLater && (feedId == null || it.feedId == feedId)
+                        }
+                        else -> state.entries.filter {
+                            it.isStarred && (feedId == null || it.feedId == feedId)
+                        }
+                    }
+                }
                 EntryListScreen(
-                    entries = starredEntries,
+                    entries = libraryEntries,
                     feeds = state.feeds,
                     onEntryClick = onEntryClick,
                     onStarToggle = onStarToggle,
@@ -336,8 +363,18 @@ private fun MainTabScreen(
                     onRefresh = onRefresh,
                     isRefreshing = state.isLoading,
                     showFilter = false,
-                    filterMode = FilterMode.STARRED,
+                    showLibraryFilter = true,
+                    filterMode = if (state.filterMode == FilterMode.READ_LATER) {
+                        FilterMode.READ_LATER
+                    } else {
+                        FilterMode.STARRED
+                    },
+                    onFilter = onLibraryFilter,
+                    selectedFeedId = state.libraryFeedId,
+                    onSelectLibraryFeed = onSelectLibraryFeed,
                     onOpenArticleSearch = onOpenArticleSearch,
+                    onMarkRead = onMarkRead,
+                    onMarkUnread = onMarkUnread,
                     hasLoadedEntries = state.hasLoadedEntries,
                     hasLocalEntries = state.hasLocalEntries
                 )

@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -39,6 +40,8 @@ import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -110,6 +113,10 @@ fun EntryListScreen(
     onMarkRead: (Entry) -> Unit = {},
     onMarkUnread: (Entry) -> Unit = {},
     onReadLaterToggle: (Entry, Boolean) -> Unit = { _, _ -> },
+    /** 收藏/稍后读视图：展示模式芯片与按源筛选 */
+    showLibraryFilter: Boolean = false,
+    selectedFeedId: Long? = null,
+    onSelectLibraryFeed: (Long?) -> Unit = {},
     feeds: List<Feed> = emptyList(),
     headerFeed: Feed? = null,
     headerEntryCount: Int = 0,
@@ -171,6 +178,36 @@ fun EntryListScreen(
                             Text("全部标为已读")
                         }
                     }
+                }
+            }
+            if (showLibraryFilter) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    FilterChip(
+                        selected = filterMode == FilterMode.STARRED,
+                        onClick = { onFilter(FilterMode.STARRED) },
+                        label = { Text("收藏") },
+                        colors = glassChipColors(),
+                        border = glassChipBorder(filterMode == FilterMode.STARRED)
+                    )
+                    FilterChip(
+                        selected = filterMode == FilterMode.READ_LATER,
+                        onClick = { onFilter(FilterMode.READ_LATER) },
+                        label = { Text("稍后读") },
+                        colors = glassChipColors(),
+                        border = glassChipBorder(filterMode == FilterMode.READ_LATER)
+                    )
+                    Spacer(modifier = Modifier.weight(1f))
+                    FeedFilterDropdown(
+                        feeds = feeds,
+                        selectedFeedId = selectedFeedId,
+                        onSelect = onSelectLibraryFeed
+                    )
                 }
             }
             LazyColumn(
@@ -393,6 +430,12 @@ private fun EntryEmptyState(
             subtitle = "在文章上点星标，就可以在这里找到它们"
             showAddAction = false
         }
+        filterMode == FilterMode.READ_LATER -> {
+            icon = Icons.Default.BookmarkBorder
+            title = "还没有稍后读"
+            subtitle = "左滑文章或在阅读页点书签，就可以在这里找到它们"
+            showAddAction = false
+        }
         else -> {
             icon = Icons.Default.RssFeed
             title = "还没有文章"
@@ -507,6 +550,52 @@ private fun SwipeableEntryItem(
             onClick = onClick,
             onStar = onStar
         )
+    }
+}
+
+@Composable
+private fun FeedFilterDropdown(
+    feeds: List<Feed>,
+    selectedFeedId: Long?,
+    onSelect: (Long?) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val label = selectedFeedId?.let { id -> feeds.firstOrNull { it.id == id }?.title } ?: "全部来源"
+    Box {
+        FilterChip(
+            selected = selectedFeedId != null,
+            onClick = { expanded = true },
+            label = {
+                Text(
+                    text = label,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 120.dp)
+                )
+            },
+            colors = glassChipColors(),
+            border = glassChipBorder(selectedFeedId != null)
+        )
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(
+                text = { Text("全部来源") },
+                onClick = {
+                    onSelect(null)
+                    expanded = false
+                }
+            )
+            feeds.forEach { feed ->
+                DropdownMenuItem(
+                    text = {
+                        Text(feed.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    },
+                    onClick = {
+                        onSelect(feed.id)
+                        expanded = false
+                    }
+                )
+            }
+        }
     }
 }
 

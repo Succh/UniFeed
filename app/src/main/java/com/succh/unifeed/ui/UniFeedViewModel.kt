@@ -34,6 +34,8 @@ data class UniFeedUiState(
     val hasLocalEntries: Boolean = false,
     val error: String? = null,
     val selectedFeedId: Long? = null,
+    /** 收藏/稍后读视图内按订阅源筛选，与文章页 selectedFeedId 独立 */
+    val libraryFeedId: Long? = null,
     val filterMode: FilterMode = FilterMode.ALL,
     val isDiscovering: Boolean = false,
     val discoveredFeeds: List<DiscoveredFeed> = emptyList(),
@@ -101,12 +103,18 @@ class UniFeedViewModel(application: Application) : AndroidViewModel(application)
             combine(
                 repo.observeAllEntries(),
                 _uiState.map { it.filterMode },
-                _uiState.map { it.selectedFeedId }
-            ) { allEntries, filter, feedId ->
+                _uiState.map { it.selectedFeedId },
+                _uiState.map { it.libraryFeedId }
+            ) { allEntries, filter, feedId, libraryFeedId ->
+                // 收藏/稍后读与库视图所选源组合，不占用文章页 selectedFeedId
                 val filtered = when (filter) {
                     FilterMode.UNREAD -> allEntries.filter { !it.isRead }
-                    FilterMode.STARRED -> allEntries.filter { it.isStarred }
-                    FilterMode.READ_LATER -> allEntries.filter { it.isReadLater }
+                    FilterMode.STARRED -> allEntries.filter {
+                        it.isStarred && (libraryFeedId == null || it.feedId == libraryFeedId)
+                    }
+                    FilterMode.READ_LATER -> allEntries.filter {
+                        it.isReadLater && (libraryFeedId == null || it.feedId == libraryFeedId)
+                    }
                     FilterMode.ALL -> if (feedId != null) allEntries.filter { it.feedId == feedId } else allEntries
                 }
                 // 侧边栏「最新一篇」标题：与列表同一次全表读取算出，省掉第二条 Flow 的重复查询
@@ -417,6 +425,32 @@ class UniFeedViewModel(application: Application) : AndroidViewModel(application)
 
     fun setFilter(mode: FilterMode) {
         _uiState.update { it.copy(filterMode = mode, selectedFeedId = null) }
+    }
+
+    /** 进入收藏/稍后读：切过滤模式，库内源筛选默认全部 */
+    fun enterLibrary(mode: FilterMode) {
+        _uiState.update { it.copy(filterMode = mode, libraryFeedId = null) }
+    }
+
+    /** 收藏 ↔ 稍后读切换时保留当前订阅源筛选 */
+    fun setLibraryFilter(mode: FilterMode) {
+        _uiState.update { it.copy(filterMode = mode) }
+    }
+
+    /** 库视图按源筛选，不改文章页 selectedFeedId */
+    fun setLibraryFeed(feedId: Long?) {
+        _uiState.update { it.copy(libraryFeedId = feedId) }
+    }
+
+    /** 离开收藏/稍后读：回到全部文章，保留文章页已选源 */
+    fun leaveLibrary() {
+        _uiState.update {
+            if (it.filterMode == FilterMode.STARRED || it.filterMode == FilterMode.READ_LATER) {
+                it.copy(filterMode = FilterMode.ALL)
+            } else {
+                it
+            }
+        }
     }
 
     fun markAllRead() {
