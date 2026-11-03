@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.succh.unifeed.UniFeedApp
+import com.succh.unifeed.data.cache.ArticleRetention
 import com.succh.unifeed.data.db.entity.Entry
 import com.succh.unifeed.data.db.entity.Feed
 import com.succh.unifeed.data.db.entity.FilterRule
@@ -458,6 +459,10 @@ class UniFeedViewModel(application: Application) : AndroidViewModel(application)
             repo.markAllReadAll()
         }
     }
+
+    /** 按保留策略立即清理旧文章，返回删除条数 */
+    suspend fun cleanupOldArticles(retention: ArticleRetention): Int =
+        withContext(Dispatchers.IO) { repo.cleanupOldArticles(retention) }
 
     fun clearError() {
         _uiState.update { it.copy(error = null, subscribeError = null) }

@@ -57,6 +57,21 @@ interface EntryDao {
     suspend fun deleteByFeed(feedId: Long)
 
     /**
+     * 删除截止时间之前、已读且未收藏/未稍后读的文章。
+     * 发布时间缺失时用抓取时间；未读一律不删。
+     */
+    @Query(
+        """
+        DELETE FROM entries
+        WHERE isRead = 1
+          AND isStarred = 0
+          AND isReadLater = 0
+          AND CASE WHEN publishedAt > 0 THEN publishedAt ELSE fetchedAt END < :cutoffMillis
+        """
+    )
+    suspend fun deleteStaleRead(cutoffMillis: Long): Int
+
+    /**
      * 全文搜索全部已订阅源文章：标题、摘要、正文均走 LIKE。
      * pattern 需已转义 % / _，由仓库层负责。
      */

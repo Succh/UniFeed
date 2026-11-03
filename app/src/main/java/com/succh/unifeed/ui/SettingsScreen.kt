@@ -29,8 +29,10 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -41,6 +43,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.succh.unifeed.data.cache.ArticleRetention
+import com.succh.unifeed.data.cache.ByteSize
+import com.succh.unifeed.data.cache.ImageCache
+import com.succh.unifeed.data.cache.ImageCacheLimit
 import com.succh.unifeed.data.db.entity.FilterRule
 import com.succh.unifeed.data.rss.RsshubEndpoints
 import com.succh.unifeed.data.work.RefreshInterval
@@ -59,7 +65,7 @@ import java.net.URL
 /** 公共实例快捷选择：直接取自抓取层的镜像清单，顺序即竞速优先级 */
 private val RSSHUB_PRESETS = RsshubEndpoints.MIRRORS
 
-/** 设置 Tab：列表设置、内容过滤、RSSHub 实例配置、关于。分组走玻璃面板。 */
+/** 设置 Tab：列表设置、内容过滤、RSSHub 实例、缓存与清理、关于。分组走玻璃面板。 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
@@ -77,6 +83,17 @@ fun SettingsScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     var keywordInput by remember { mutableStateOf("") }
     var addAction by remember { mutableStateOf(FilterRule.ACTION_MARK_READ) }
+    var cacheBytes by remember { mutableLongStateOf(0L) }
+    var cacheBusy by remember { mutableStateOf(false) }
+    var cleanupBusy by remember { mutableStateOf(false) }
+
+    fun refreshCacheSize() {
+        scope.launch {
+            cacheBytes = withContext(Dispatchers.IO) { ImageCache.sizeBytes(context) }
+        }
+    }
+
+    LaunchedEffect(Unit) { refreshCacheSize() }
 
     fun exportOpml() {
         scope.launch {
@@ -400,6 +417,93 @@ fun SettingsScreen(
             }
 
             GlassPanel {
+                Text("缓存与清理", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "清理图片缓存不影响文章正文、收藏与稍后读。旧文章清理只删除已读且未收藏、未稍后读的文章，未读一律保留。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text("图片缓存上限", style = MaterialTheme.typography.labelMedium)
+                ImageCacheLimit.entries.chunked(2).forEach { rowSlots ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        rowSlots.forEach { slot ->
+                            val selected = prefs.imageCacheLimit == slot
+                            FilterChip(
+                                selected = selected,
+                                onClick = {
+                                    prefs.imageCacheLimit = slot
+                                    ImageCache.applyLimit(context, slot)
+                                },
+                                label = { Text(imageCacheLimitLabel(slot)) },
+                                colors = glassChipColors(),
+                                border = glassChipBorder(selected)
+                            )
+                        }
+                    }
+                }
+                Text(
+                    "当前占用：${ByteSize.format(cacheBytes)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Button(
+                    onClick = {
+                        cacheBusy = true
+                        scope.launch {
+                            try {
+                                withContext(Dispatchers.IO) { ImageCache.clear(context) }
+                                refreshCacheSize()
+                                snackbarHostState.showSnackbar("已清理图片缓存")
+                            } finally {
+                                cacheBusy = false
+                            }
+                        }
+                    },
+                    enabled = !cacheBusy
+                ) {
+                    Text(if (cacheBusy) "清理中..." else "清理图片缓存")
+                }
+                Text("旧文章清理策略", style = MaterialTheme.typography.labelMedium)
+                ArticleRetention.entries.chunked(2).forEach { rowSlots ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        rowSlots.forEach { slot ->
+                            val selected = prefs.articleRetention == slot
+                            FilterChip(
+                                selected = selected,
+                                onClick = { prefs.articleRetention = slot },
+                                label = { Text(articleRetentionLabel(slot)) },
+                                colors = glassChipColors(),
+                                border = glassChipBorder(selected)
+                            )
+                        }
+                    }
+                }
+                Button(
+                    onClick = {
+                        cleanupBusy = true
+                        scope.launch {
+                            try {
+                                val count = vm.cleanupOldArticles(prefs.articleRetention)
+                                snackbarHostState.showSnackbar("已清理 $count 条旧文章")
+                            } finally {
+                                cleanupBusy = false
+                            }
+                        }
+                    },
+                    enabled = !cleanupBusy
+                ) {
+                    Text(if (cleanupBusy) "清理中..." else "立即清理旧文章")
+                }
+                if (prefs.articleRetention == ArticleRetention.NEVER) {
+                    Text(
+                        "当前为不清理：不会按时间删除文章。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            GlassPanel {
                 Text("关于", style = MaterialTheme.typography.titleMedium)
                 Text(
                     "UniFeed v1.1 • 开源 RSS 阅读器",
@@ -416,6 +520,20 @@ private fun refreshIntervalLabel(interval: RefreshInterval): String = when (inte
     RefreshInterval.MINUTES_30 -> "30 分钟"
     RefreshInterval.HOUR_1 -> "1 小时"
     RefreshInterval.MANUAL -> "手动"
+}
+
+private fun imageCacheLimitLabel(limit: ImageCacheLimit): String = when (limit) {
+    ImageCacheLimit.MB_100 -> "100MB"
+    ImageCacheLimit.MB_500 -> "500MB"
+    ImageCacheLimit.GB_1 -> "1GB"
+    ImageCacheLimit.UNLIMITED -> "不限"
+}
+
+private fun articleRetentionLabel(retention: ArticleRetention): String = when (retention) {
+    ArticleRetention.DAYS_30 -> "30 天"
+    ArticleRetention.DAYS_90 -> "90 天"
+    ArticleRetention.DAYS_180 -> "180 天"
+    ArticleRetention.NEVER -> "不清理"
 }
 
 @Composable

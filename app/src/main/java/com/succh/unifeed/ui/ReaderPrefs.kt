@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import com.succh.unifeed.data.cache.ArticleRetention
+import com.succh.unifeed.data.cache.ImageCacheLimit
 import com.succh.unifeed.data.rss.RsshubEndpoints
 import com.succh.unifeed.data.work.RefreshInterval
 
@@ -134,6 +136,24 @@ class ReaderPrefs(context: Context) {
             sp.edit().putBoolean(KEY_REFRESH_WIFI_ONLY, value).apply()
         }
 
+    /** 图片磁盘缓存上限；默认 500MB */
+    private val _imageCacheLimit = mutableStateOf(loadImageCacheLimit())
+    var imageCacheLimit: ImageCacheLimit
+        get() = _imageCacheLimit.value
+        set(value) {
+            _imageCacheLimit.value = value
+            sp.edit().putString(KEY_IMAGE_CACHE_LIMIT, value.name).apply()
+        }
+
+    /** 旧文章保留时长；默认不清理 */
+    private val _articleRetention = mutableStateOf(loadArticleRetention())
+    var articleRetention: ArticleRetention
+        get() = _articleRetention.value
+        set(value) {
+            _articleRetention.value = value
+            sp.edit().putString(KEY_ARTICLE_RETENTION, value.name).apply()
+        }
+
     private fun loadTheme(): ReaderTheme {
         val name = sp.getString(KEY_THEME, ReaderTheme.LIGHT.name)
         return ReaderTheme.entries.firstOrNull { it.name == name } ?: ReaderTheme.LIGHT
@@ -165,6 +185,14 @@ class ReaderPrefs(context: Context) {
         return loadRefreshInterval().isPeriodic
     }
 
+    private fun loadImageCacheLimit(): ImageCacheLimit {
+        return ImageCacheLimit.fromName(sp.getString(KEY_IMAGE_CACHE_LIMIT, null))
+    }
+
+    private fun loadArticleRetention(): ArticleRetention {
+        return ArticleRetention.fromName(sp.getString(KEY_ARTICLE_RETENTION, null))
+    }
+
     private companion object {
         const val KEY_SIZE = "font_size"
         const val KEY_LH = "line_height"
@@ -180,5 +208,7 @@ class ReaderPrefs(context: Context) {
         const val KEY_AUTO_REFRESH_INTERVAL_HOURS = "auto_refresh_interval_hours"
         const val KEY_REFRESH_INTERVAL = "refresh_interval"
         const val KEY_REFRESH_WIFI_ONLY = "refresh_wifi_only"
+        const val KEY_IMAGE_CACHE_LIMIT = "image_cache_limit"
+        const val KEY_ARTICLE_RETENTION = "article_retention"
     }
 }
