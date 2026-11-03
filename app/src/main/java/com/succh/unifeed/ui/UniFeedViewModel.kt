@@ -59,7 +59,7 @@ data class UniFeedUiState(
     val filterRules: List<FilterRule> = emptyList()
 )
 
-enum class FilterMode { ALL, UNREAD, STARRED }
+enum class FilterMode { ALL, UNREAD, STARRED, READ_LATER }
 
 class UniFeedViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -106,6 +106,7 @@ class UniFeedViewModel(application: Application) : AndroidViewModel(application)
                 val filtered = when (filter) {
                     FilterMode.UNREAD -> allEntries.filter { !it.isRead }
                     FilterMode.STARRED -> allEntries.filter { it.isStarred }
+                    FilterMode.READ_LATER -> allEntries.filter { it.isReadLater }
                     FilterMode.ALL -> if (feedId != null) allEntries.filter { it.feedId == feedId } else allEntries
                 }
                 // 侧边栏「最新一篇」标题：与列表同一次全表读取算出，省掉第二条 Flow 的重复查询
@@ -404,6 +405,10 @@ class UniFeedViewModel(application: Application) : AndroidViewModel(application)
 
     fun setStarred(entry: Entry, starred: Boolean) {
         viewModelScope.launch { repo.setStarred(entry, starred) }
+    }
+
+    fun setReadLater(entry: Entry, readLater: Boolean) {
+        viewModelScope.launch { repo.setReadLater(entry, readLater) }
     }
 
     fun selectFeed(feedId: Long?) {

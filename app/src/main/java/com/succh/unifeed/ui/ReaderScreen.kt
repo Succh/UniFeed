@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Share
@@ -81,6 +83,7 @@ fun ReaderScreen(
     prefs: ReaderPrefs,
     onBack: () -> Unit,
     onToggleStar: (Entry, Boolean) -> Unit,
+    onToggleReadLater: (Entry, Boolean) -> Unit = { _, _ -> },
     onOpenBrowser: (Entry) -> Unit,
     onShare: (Entry) -> Unit,
     feedTitle: String? = null,
@@ -98,6 +101,7 @@ fun ReaderScreen(
     val colors = MaterialTheme.colorScheme
     var showAaPanel by remember { mutableStateOf(false) }
     var starred by remember(entry.id, entry.isStarred) { mutableStateOf(entry.isStarred) }
+    var readLater by remember(entry.id, entry.isReadLater) { mutableStateOf(entry.isReadLater) }
     val snackbarHostState = remember { SnackbarHostState() }
     val currentIndex = listEntries.indexOfFirst { it.id == entry.id }
     val prevEntry = listEntries.getOrNull(currentIndex - 1)
@@ -172,6 +176,16 @@ fun ReaderScreen(
                 actions = {
                     IconButton(onClick = { showAaPanel = true }) {
                         Icon(Icons.Filled.FormatSize, contentDescription = "阅读设置", tint = colors.onSurface)
+                    }
+                    IconButton(onClick = {
+                        readLater = !readLater
+                        onToggleReadLater(entry, readLater)
+                    }) {
+                        Icon(
+                            if (readLater) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
+                            contentDescription = "稍后读",
+                            tint = if (readLater) Color(0xFF5C6BC0) else colors.onSurface
+                        )
                     }
                     IconButton(onClick = {
                         starred = !starred

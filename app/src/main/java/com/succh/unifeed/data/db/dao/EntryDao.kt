@@ -44,6 +44,9 @@ interface EntryDao {
     @Query("UPDATE entries SET isStarred = :starred WHERE id = :id")
     suspend fun setStarred(id: Long, starred: Boolean)
 
+    @Query("UPDATE entries SET isReadLater = :readLater WHERE id = :id")
+    suspend fun setReadLater(id: Long, readLater: Boolean)
+
     @Query("UPDATE entries SET lastReadPosition = :position, lastReadAt = :readAt WHERE id = :id")
     suspend fun updateReadProgress(id: Long, position: Float, readAt: Long)
 

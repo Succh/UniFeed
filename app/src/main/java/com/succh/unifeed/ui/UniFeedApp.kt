@@ -77,6 +77,7 @@ fun UniFeedApp(
             },
             onBack = { selectedEntry = null },
             onToggleStar = { e, s -> viewModel.setStarred(e, s) },
+            onToggleReadLater = { e, s -> viewModel.setReadLater(e, s) },
             onOpenBrowser = { e ->
                 e.link?.let {
                     runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, it.toUri())) }
@@ -184,6 +185,7 @@ fun UniFeedApp(
                 selectedEntry = clicked
             },
             onStarToggle = viewModel::setStarred,
+            onReadLaterToggle = viewModel::setReadLater,
             onFilter = viewModel::setFilter,
             onRefresh = viewModel::refreshCurrentFeed,
             onMarkAllRead = viewModel::markAllRead,
@@ -216,6 +218,7 @@ private fun MainTabScreen(
     onDeleteFeed: (com.succh.unifeed.data.db.entity.Feed) -> Unit,
     onEntryClick: (Entry) -> Unit,
     onStarToggle: (Entry, Boolean) -> Unit,
+    onReadLaterToggle: (Entry, Boolean) -> Unit = { _, _ -> },
     onFilter: (FilterMode) -> Unit,
     onRefresh: () -> Unit,
     onMarkAllRead: () -> Unit,
@@ -300,6 +303,7 @@ private fun MainTabScreen(
                     feeds = state.feeds,
                     onEntryClick = onEntryClick,
                     onStarToggle = onStarToggle,
+                    onReadLaterToggle = onReadLaterToggle,
                     showSummary = prefs.listShowSummary,
                     modifier = Modifier.padding(padding),
                     onRefresh = onRefresh,
@@ -326,6 +330,7 @@ private fun MainTabScreen(
                     feeds = state.feeds,
                     onEntryClick = onEntryClick,
                     onStarToggle = onStarToggle,
+                    onReadLaterToggle = onReadLaterToggle,
                     showSummary = prefs.listShowSummary,
                     modifier = Modifier.padding(padding),
                     onRefresh = onRefresh,

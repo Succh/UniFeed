@@ -16,6 +16,8 @@ data class Entry(
     val publishedAt: Long = 0L,
     val isRead: Boolean = false,
     val isStarred: Boolean = false,
+    /** 稍后读，与收藏独立，可同时为 true */
+    val isReadLater: Boolean = false,
     val fetchedAt: Long = System.currentTimeMillis(),
     /** 封面图 URL，解析自 enclosure / media / 正文首图 */
     val imageUrl: String? = null,

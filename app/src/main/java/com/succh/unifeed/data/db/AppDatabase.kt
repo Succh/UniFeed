@@ -17,7 +17,7 @@ import com.succh.unifeed.data.db.entity.SearchHistory
 
 @Database(
     entities = [Feed::class, Entry::class, Folder::class, SearchHistory::class, FilterRule::class],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -78,6 +78,13 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 db.execSQL("ALTER TABLE entries ADD COLUMN isHidden INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("ALTER TABLE feeds ADD COLUMN applyGlobalFilter INTEGER NOT NULL DEFAULT 1")
+            }
+        }
+
+        /** v5 → v6：稍后读标记，与收藏字段独立 */
+        val MIGRATION_5_6: Migration = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE entries ADD COLUMN isReadLater INTEGER NOT NULL DEFAULT 0")
             }
         }
     }

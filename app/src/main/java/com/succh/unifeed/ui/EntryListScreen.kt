@@ -28,13 +28,14 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.MarkEmailRead
 import androidx.compose.material.icons.filled.MarkEmailUnread
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
-import androidx.compose.material.icons.filled.StarOutline
-import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -108,6 +109,7 @@ fun EntryListScreen(
     onOpenArticleSearch: () -> Unit = {},
     onMarkRead: (Entry) -> Unit = {},
     onMarkUnread: (Entry) -> Unit = {},
+    onReadLaterToggle: (Entry, Boolean) -> Unit = { _, _ -> },
     feeds: List<Feed> = emptyList(),
     headerFeed: Feed? = null,
     headerEntryCount: Int = 0,
@@ -231,7 +233,8 @@ fun EntryListScreen(
                                 onClick = { onEntryClick(entry) },
                                 onStar = { onStarToggle(entry, !entry.isStarred) },
                                 onMarkRead = { onMarkRead(entry) },
-                                onMarkUnread = { onMarkUnread(entry) }
+                                onMarkUnread = { onMarkUnread(entry) },
+                                onReadLater = { onReadLaterToggle(entry, !entry.isReadLater) }
                             )
                         }
                     }
@@ -442,7 +445,8 @@ private fun SwipeableEntryItem(
     onClick: () -> Unit,
     onStar: () -> Unit,
     onMarkRead: () -> Unit,
-    onMarkUnread: () -> Unit
+    onMarkUnread: () -> Unit,
+    onReadLater: () -> Unit
 ) {
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
@@ -453,8 +457,8 @@ private fun SwipeableEntryItem(
                     false
                 }
                 SwipeToDismissBoxValue.EndToStart -> {
-                    // 左滑：收藏/取消收藏
-                    onStar()
+                    // 左滑：稍后读，与收藏独立
+                    onReadLater()
                     false
                 }
                 else -> false
@@ -475,7 +479,7 @@ private fun SwipeableEntryItem(
                 SwipeToDismissBoxValue.StartToEnd ->
                     if (entry.isRead) Icons.Default.MarkEmailUnread else Icons.Default.MarkEmailRead
                 SwipeToDismissBoxValue.EndToStart ->
-                    if (entry.isStarred) Icons.Default.StarOutline else Icons.Default.Star
+                    if (entry.isReadLater) Icons.Default.BookmarkBorder else Icons.Default.Bookmark
                 else -> null
             }
             Box(
