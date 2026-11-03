@@ -30,4 +30,7 @@
     <string name="about">关于</string>
     <string name="version">版本</string>
     <string name="no_connection">无网络连接</string>
+    <string name="widget_unread_title">最新未读</string>
+    <string name="widget_unread_description">展示最新 5 条未读文章</string>
+    <string name="widget_unread_empty">暂无未读文章</string>
 </resources>

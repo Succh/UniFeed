@@ -105,6 +105,9 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("io.coil-kt:coil-compose:2.6.0")
 
+    // 启动器未读角标：走广播，不发通知
+    implementation("me.leolin:ShortcutBadger:1.1.22")
+
     // XML 解析 (RSS)
 
     // jsoup (HTML 内容提取)

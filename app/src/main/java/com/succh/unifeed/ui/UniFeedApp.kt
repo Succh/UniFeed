@@ -21,7 +21,9 @@ import com.succh.unifeed.ui.theme.glassHairline
 
 @Composable
 fun UniFeedApp(
-    viewModel: UniFeedViewModel = viewModel()
+    viewModel: UniFeedViewModel = viewModel(),
+    openEntryId: Long? = null,
+    onOpenEntryConsumed: () -> Unit = {}
 ) {
     val state by viewModel.uiState.collectAsState()
     var showDiscover by remember { mutableStateOf(false) }
@@ -32,6 +34,20 @@ fun UniFeedApp(
     val context = LocalContext.current
     val prefs = remember { ReaderPrefs(context) }
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // 桌面小部件点某条文章：按 id 打开阅读器
+    LaunchedEffect(openEntryId) {
+        val id = openEntryId ?: return@LaunchedEffect
+        val entry = viewModel.loadEntry(id)
+        if (entry != null) {
+            restoreProgressOnOpen = true
+            readerList = listOf(entry)
+            selectedEntry = entry
+            showDiscover = false
+            viewModel.closeArticleSearch()
+        }
+        onOpenEntryConsumed()
+    }
 
     // 抓取/刷新失败时用 Snackbar 通知用户，避免静默失败
     LaunchedEffect(state.error) {

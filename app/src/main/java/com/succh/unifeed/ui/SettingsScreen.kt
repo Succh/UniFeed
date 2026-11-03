@@ -51,6 +51,7 @@ import com.succh.unifeed.data.db.entity.FilterRule
 import com.succh.unifeed.data.rss.RsshubEndpoints
 import com.succh.unifeed.data.work.RefreshInterval
 import com.succh.unifeed.data.work.RefreshWorker
+import com.succh.unifeed.desktop.UnreadBadge
 import com.succh.unifeed.ui.theme.FoloDimens
 import com.succh.unifeed.ui.theme.GlassPanel
 import com.succh.unifeed.ui.theme.glassChipBorder
@@ -65,7 +66,7 @@ import java.net.URL
 /** 公共实例快捷选择：直接取自抓取层的镜像清单，顺序即竞速优先级 */
 private val RSSHUB_PRESETS = RsshubEndpoints.MIRRORS
 
-/** 设置 Tab：列表设置、内容过滤、RSSHub 实例、缓存与清理、关于。分组走玻璃面板。 */
+/** 设置 Tab：列表设置、内容过滤、桌面角标、RSSHub 实例、缓存与清理、关于。分组走玻璃面板。 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
@@ -367,6 +368,24 @@ fun SettingsScreen(
                         Text("导入 OPML")
                     }
                 }
+            }
+
+            GlassPanel {
+                Text("桌面", style = MaterialTheme.typography.titleMedium)
+                SwitchSetting("应用图标未读角标", prefs.unreadBadgeEnabled) { enabled ->
+                    prefs.unreadBadgeEnabled = enabled
+                    scope.launch { UnreadBadge.syncFromDb(context) }
+                }
+                Text(
+                    "显示未读文章数。不支持角标的启动器可能不显示。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    "可长按桌面空白处添加「最新未读」小部件。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
 
             GlassPanel {

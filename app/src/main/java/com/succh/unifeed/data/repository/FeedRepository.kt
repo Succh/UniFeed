@@ -24,6 +24,8 @@ import com.succh.unifeed.data.rss.RsshubCatalog
 import com.succh.unifeed.data.rss.RsshubEndpoints
 import com.succh.unifeed.data.rss.RsshubNamespace
 import com.succh.unifeed.data.search.EntrySearch
+import com.succh.unifeed.desktop.UnreadWidgetContent
+import com.succh.unifeed.desktop.UnreadWidgetItem
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
@@ -95,6 +97,10 @@ class FeedRepository(
     fun observeFeeds(): Flow<List<Feed>> = feedDao.observeAll()
     fun observeAllEntries(): Flow<List<Entry>> = entryDao.observeVisible()
     fun observeUnreadCount(): Flow<Int> = entryDao.observeUnreadCount()
+    suspend fun getUnreadCount(): Int = entryDao.getUnreadCount()
+    suspend fun getEntry(id: Long): Entry? = entryDao.getById(id)
+    suspend fun getLatestUnreadForWidget(limit: Int = UnreadWidgetContent.MAX_ITEMS): List<UnreadWidgetItem> =
+        entryDao.getLatestUnreadForWidget(limit)
     fun observeFilterRules(): Flow<List<FilterRule>> = filterRuleDao.observeAll()
 
     /**

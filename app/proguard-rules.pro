@@ -1,5 +1,8 @@
 # UniFeed ProGuard Rules
 
+# ShortcutBadger 用反射找启动器实现，必须保留
+-keep class me.leolin.shortcutbadger.** { *; }
+
 # Keep Room entities
 -keep class com.succh.unifeed.data.database.entity.** { *; }
 
