@@ -149,7 +149,7 @@ object ArticleSpeechText {
             .replace('\u00a0', ' ')
             .replace(Regex("[\\t\\x0B\\f\\r]+"), " ")
             .split('\n')
-            .joinToString("\n") { it.trim() }
+            .joinToString("\n") { it.trim().replace(Regex(" {2,}"), " ") }
             .replace(Regex(" *\\n *"), "\n")
             .replace(Regex("\\n{3,}"), "\n\n")
             .trim()
