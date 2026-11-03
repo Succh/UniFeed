@@ -11,6 +11,20 @@ import com.succh.unifeed.data.work.RefreshInterval
 
 enum class ReaderTheme { LIGHT, SEPIA, DARK }
 
+/** 朗读语速档位，切换后立即对后续 utterance 生效 */
+enum class TtsRate(val multiplier: Float, val label: String) {
+    SLOW(0.75f, "0.75x"),
+    NORMAL(1.0f, "1x"),
+    FAST(1.25f, "1.25x"),
+    FASTER(1.5f, "1.5x");
+
+    companion object {
+        fun fromName(name: String?): TtsRate {
+            return entries.firstOrNull { it.name == name } ?: NORMAL
+        }
+    }
+}
+
 class ReaderPrefs(context: Context) {
     private val sp: SharedPreferences =
         context.applicationContext.getSharedPreferences("unifeed_prefs", Context.MODE_PRIVATE)
@@ -154,6 +168,15 @@ class ReaderPrefs(context: Context) {
             sp.edit().putString(KEY_ARTICLE_RETENTION, value.name).apply()
         }
 
+    /** 朗读语速档位；默认 1x */
+    private val _ttsRate = mutableStateOf(TtsRate.fromName(sp.getString(KEY_TTS_RATE, null)))
+    var ttsRate: TtsRate
+        get() = _ttsRate.value
+        set(value) {
+            _ttsRate.value = value
+            sp.edit().putString(KEY_TTS_RATE, value.name).apply()
+        }
+
     /** 桌面图标未读角标；默认开启，不支持的启动器上静默无效果 */
     private val _unreadBadgeEnabled = mutableStateOf(sp.getBoolean(KEY_UNREAD_BADGE, true))
     var unreadBadgeEnabled: Boolean
@@ -221,6 +244,7 @@ class ReaderPrefs(context: Context) {
         private const val KEY_IMAGE_CACHE_LIMIT = "image_cache_limit"
         private const val KEY_ARTICLE_RETENTION = "article_retention"
         private const val KEY_UNREAD_BADGE = "unread_badge_enabled"
+        private const val KEY_TTS_RATE = "tts_rate"
 
         /** 直接读 SP，供角标同步在 IO 线程使用，不新建 Compose 状态 */
         fun unreadBadgeEnabled(context: Context): Boolean {

@@ -28,7 +28,7 @@ import com.succh.unifeed.ui.theme.glassBarColor
 
 /**
  * 阅读页 Aa 快捷设置面板，参考 Folo 阅读体验。
- * 支持字号 / 行距 / 主题（浅色、米黄、夜间）/ 显示图片 / 衬线字体 / 两端对齐。
+ * 支持字号 / 行距 / 主题（浅色、米黄、夜间）/ 显示图片 / 衬线字体 / 两端对齐 / 朗读语速。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -97,6 +97,29 @@ fun AaSettingsPanel(
             SwitchSetting("显示图片", prefs.showImages) { prefs.showImages = it }
             SwitchSetting("衬线字体", prefs.serifFont) { prefs.serifFont = it }
             SwitchSetting("两端对齐", prefs.justifyText) { prefs.justifyText = it }
+
+            // 朗读语速
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("语速", style = MaterialTheme.typography.bodyLarge)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    TtsRate.entries.forEach { rate ->
+                        val selected = prefs.ttsRate == rate
+                        FilledTonalButton(
+                            onClick = { prefs.ttsRate = rate },
+                            colors = if (selected) ButtonDefaults.filledTonalButtonColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer
+                            ) else ButtonDefaults.filledTonalButtonColors(),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(rate.label, style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+            }
         }
     }
 }

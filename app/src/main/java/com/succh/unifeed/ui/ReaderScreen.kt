@@ -20,9 +20,12 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.OpenInBrowser
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -44,11 +47,13 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -60,6 +65,7 @@ import com.succh.unifeed.ui.theme.glassHairline
 import com.succh.unifeed.ui.theme.glassTopAppBarColors
 import kotlin.math.abs
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import okhttp3.Response
 import java.util.Collections
 
@@ -99,10 +105,15 @@ fun ReaderScreen(
     highlightQuery: String? = null
 ) {
     val colors = MaterialTheme.colorScheme
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var showAaPanel by remember { mutableStateOf(false) }
     var starred by remember(entry.id, entry.isStarred) { mutableStateOf(entry.isStarred) }
     var readLater by remember(entry.id, entry.isReadLater) { mutableStateOf(entry.isReadLater) }
     val snackbarHostState = remember { SnackbarHostState() }
+    val tts = remember { ReaderTtsController(context) }
+    val ttsState by tts.state
+    val ttsError by tts.error
     val currentIndex = listEntries.indexOfFirst { it.id == entry.id }
     val prevEntry = listEntries.getOrNull(currentIndex - 1)
     val nextEntry = listEntries.getOrNull(currentIndex + 1)
@@ -131,8 +142,23 @@ fun ReaderScreen(
     DisposableEffect(entry.id) {
         val id = entry.id
         onDispose {
+            tts.stop()
             latestSave(id, progressByEntry[id] ?: 0f)
         }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { tts.release() }
+    }
+
+    LaunchedEffect(prefs.ttsRate) {
+        tts.setRate(prefs.ttsRate.multiplier)
+    }
+
+    LaunchedEffect(ttsError) {
+        val msg = ttsError ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(msg)
+        tts.consumeError()
     }
 
     val articleHtml = remember(
@@ -176,6 +202,30 @@ fun ReaderScreen(
                 actions = {
                     IconButton(onClick = { showAaPanel = true }) {
                         Icon(Icons.Filled.FormatSize, contentDescription = "阅读设置", tint = colors.onSurface)
+                    }
+                    IconButton(onClick = {
+                        when (ttsState) {
+                            TtsPlaybackState.Playing -> tts.pause()
+                            TtsPlaybackState.Paused -> tts.resume()
+                            TtsPlaybackState.Idle -> {
+                                val html = entry.content ?: entry.summary.orEmpty()
+                                val chunks = ArticleSpeechText.speakableChunks(entry.title, html)
+                                if (chunks.isEmpty()) {
+                                    scope.launch {
+                                        snackbarHostState.showSnackbar("暂无可朗读内容")
+                                    }
+                                } else {
+                                    tts.start(chunks, prefs.ttsRate.multiplier)
+                                }
+                            }
+                        }
+                    }) {
+                        val (icon, desc) = when (ttsState) {
+                            TtsPlaybackState.Playing -> Icons.Filled.Pause to "暂停"
+                            TtsPlaybackState.Paused -> Icons.Filled.PlayArrow to "继续"
+                            TtsPlaybackState.Idle -> Icons.Filled.VolumeUp to "朗读"
+                        }
+                        Icon(icon, contentDescription = desc, tint = colors.onSurface)
                     }
                     IconButton(onClick = {
                         readLater = !readLater
