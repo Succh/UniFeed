@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -67,7 +69,7 @@ import java.net.URL
 private val RSSHUB_PRESETS = RsshubEndpoints.MIRRORS
 
 /** 设置 Tab：列表设置、内容过滤、桌面角标、RSSHub 实例、缓存与清理、关于。分组走玻璃面板。 */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(
     prefs: ReaderPrefs,
@@ -341,14 +343,16 @@ fun SettingsScreen(
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                 }
                 Text("公共实例快捷选择", style = MaterialTheme.typography.labelMedium)
-                RSSHUB_PRESETS.chunked(3).forEach { rowPresets ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        rowPresets.forEach { preset ->
-                            AssistChip(
-                                onClick = { applyInstance(preset) },
-                                label = { Text(preset.removePrefix("https://")) }
-                            )
-                        }
+                // FlowRow 按 chip 实际宽度自然换行，替代固定每行 3 个的 chunked(3)（末行稀疏显散）
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    RSSHUB_PRESETS.forEach { preset ->
+                        AssistChip(
+                            onClick = { applyInstance(preset) },
+                            label = { Text(preset.removePrefix("https://")) }
+                        )
                     }
                 }
             }
