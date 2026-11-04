@@ -1,6 +1,7 @@
 package com.succh.unifeed.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -11,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Warning
@@ -18,15 +20,18 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
 import com.succh.unifeed.data.model.FeedPreview
 import com.succh.unifeed.data.rss.DiscoveredFeed
 import com.succh.unifeed.data.rss.RsshubCatalog
 import com.succh.unifeed.data.rss.RsshubDocRoute
+import com.succh.unifeed.data.rss.RsshubEndpoints
 import com.succh.unifeed.data.rss.RsshubNamespace
 import com.succh.unifeed.ui.theme.FoloDimens
 import com.succh.unifeed.ui.theme.glassCardBorder
@@ -34,6 +39,9 @@ import com.succh.unifeed.ui.theme.glassCardColors
 import com.succh.unifeed.ui.theme.glassSurface
 import com.succh.unifeed.ui.theme.glassTextFieldColors
 import com.succh.unifeed.ui.theme.glassTopAppBarColors
+
+/** 发现页卡片状态：HIDDEN 表示本次访问已添加、应从列表移除；SUBSCRIBED 表示订阅库里已有 */
+private enum class DiscoverCardState { ADDABLE, SUBSCRIBED, HIDDEN }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,9 +53,9 @@ fun DiscoverScreen(
     subscribeError: String?,
     onBack: () -> Unit,
     onDiscover: (String) -> Unit,
-    onAddDirect: (String) -> Unit,
-    onSubscribe: (String, String?) -> Unit,
+    onAddDirect: (String, String?) -> Unit,
     onClearError: () -> Unit,
+    subscribedUrls: Set<String> = emptySet(),
     feedPreview: FeedPreview? = null,
     isPreviewing: Boolean = false,
     onPreviewUrl: (String) -> Unit = {},
@@ -67,9 +75,13 @@ fun DiscoverScreen(
     var rsshubNs by remember { mutableStateOf<RsshubNamespace?>(null) }
     var pendingRoute by remember { mutableStateOf<RsshubRoute?>(null) }
     var pendingDoc by remember { mutableStateOf<RsshubDocRoute?>(null) }
+    var blockedFeed by remember { mutableStateOf<BuiltinFeed?>(null) }
     var param by remember { mutableStateOf("") }
     var query by remember { mutableStateOf("") }
     var urlQuery by remember { mutableStateOf("") }
+
+    // 本次访问里通过「+」或右滑添加的源：卡片立即消失，避免重复提供添加
+    val justAdded = remember { mutableStateListOf<String>() }
 
     LaunchedEffect(activeTab, query) {
         if (activeTab == 1 || query.isNotBlank()) onLoadRsshub()
@@ -85,6 +97,33 @@ fun DiscoverScreen(
     }
 
     BackHandler { goBack() }
+
+    // 精选目录里的相对路径按当前生效实例拼接；与仓库端 resolveFeedUrl 同源，才能对上 DB 里存的 URL
+    fun resolveUrl(raw: String): String =
+        if (raw.startsWith("/")) rsshubInstance.trimEnd('/') + raw else raw
+
+    fun cardState(rawUrl: String): DiscoverCardState = when {
+        resolveUrl(rawUrl) in justAdded -> DiscoverCardState.HIDDEN
+        resolveUrl(rawUrl) in subscribedUrls -> DiscoverCardState.SUBSCRIBED
+        else -> DiscoverCardState.ADDABLE
+    }
+
+    fun subscribeRaw(raw: String, title: String?) {
+        val url = resolveUrl(raw)
+        // 只有即时订阅（同步落库）的 RSSHub 地址才立刻隐藏卡片；官方源走预览框，不假装成功
+        if (RsshubEndpoints.isRsshubUrl(url)) justAdded.add(url)
+        onAddDirect(url, title)
+    }
+
+    fun subscribeDocRoute(route: RsshubDocRoute, extra: String) {
+        justAdded.add(RsshubCatalog.buildSubscribeUrl(rsshubInstance, route, extra))
+        onSubscribeRsshubRoute(route, extra)
+    }
+
+    // 不可用源不再是死点击：点开就展示失败原因与换实例建议
+    fun builtinTap(feed: BuiltinFeed) {
+        if (feed.failureHint != null) blockedFeed = feed else onPreviewUrl(resolveUrl(feed.url))
+    }
 
     pendingRoute?.let { r ->
         AlertDialog(
@@ -122,7 +161,7 @@ fun DiscoverScreen(
                         val url = RsshubPresets.resolve(rsshubInstance, r, extra)
                         val title = r.title + if (extra.isNotBlank()) ": $extra" else ""
                         pendingRoute = null
-                        onSubscribe(url, title)
+                        subscribeRaw(url, title)
                     },
                     enabled = param.isNotBlank() || r.defaultParam.isNotBlank() || r.description.isBlank()
                 ) { Text("订阅") }
@@ -166,7 +205,7 @@ fun DiscoverScreen(
                     onClick = {
                         val extra = param.trim()
                         pendingDoc = null
-                        onSubscribeRsshubRoute(r, extra)
+                        subscribeDocRoute(r, extra)
                     },
                     enabled = param.isNotBlank() || !r.needsUserParam
                 ) { Text("订阅") }
@@ -177,14 +216,51 @@ fun DiscoverScreen(
         )
     }
 
+    blockedFeed?.let { feed ->
+        AlertDialog(
+            onDismissRequest = { blockedFeed = null },
+            title = { Text(feed.title) },
+            text = {
+                Column {
+                    Text(
+                        "订阅地址：${resolveUrl(feed.url)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        feed.failureHint.orEmpty(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "若怀疑是实例反爬，可在设置 → RSSHub 实例更换后重试。",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                // 订阅按钮保持禁用：当前源不可用，只能看原因
+                Button(onClick = {}, enabled = false) { Text("订阅（当前不可用）") }
+            },
+            dismissButton = {
+                TextButton(onClick = { blockedFeed = null }) { Text("关闭") }
+            }
+        )
+    }
+
     // 这三个是 delegated var (MutableStateOf)，Kotlin 不能 smart cast，取一次本地不可变副本代替 !!
     val selectedPreset = presetCat
     val selectedCat = rsshubCat
     val selectedNs = rsshubNs
     val titleText = when {
-    selectedNs != null -> selectedNs.name
-    selectedCat != null -> RsshubCatalog.labelOf(selectedCat)
-    selectedPreset != null -> selectedPreset.name
+        selectedNs != null -> selectedNs.name
+        selectedCat != null -> RsshubCatalog.labelOf(selectedCat)
+        selectedPreset != null -> selectedPreset.name
         else -> "添加订阅"
     }
 
@@ -285,51 +361,52 @@ fun DiscoverScreen(
             }
 
             when {
-    query.isNotBlank() && activeTab != 2 && selectedPreset == null && selectedCat == null && selectedNs == null -> {
+                query.isNotBlank() && activeTab != 2 && selectedPreset == null && selectedCat == null && selectedNs == null -> {
                     SearchResults(
                         query = query,
                         namespaces = rsshubNamespaces,
-                        onBuiltin = { feed ->
-                            if (feed.failureHint != null) return@SearchResults
-                            onSubscribe(feed.url, feed.title)
+                        rsshubInstance = rsshubInstance,
+                        cardState = { url -> cardState(url) },
+                        onAddBuiltin = { feed -> subscribeRaw(feed.url, feed.title) },
+                        onPreviewBuiltin = { feed -> builtinTap(feed) },
+                        onAddPreset = { route ->
+                            subscribeRaw(RsshubPresets.resolve(rsshubInstance, route, route.defaultParam), route.title)
                         },
-                        onPreset = { route ->
-                            if (route.needsParam) {
-                                param = route.defaultParam
-                                pendingRoute = route
-                            } else {
-                                onSubscribe(RsshubPresets.resolve(rsshubInstance, route), route.title)
-                            }
+                        onParamPreset = { route ->
+                            param = route.defaultParam
+                            pendingRoute = route
                         },
-                        onDoc = { route ->
-                            if (route.needsUserParam) {
-                                param = ""
-                                pendingDoc = route
-                            } else {
-                                onSubscribeRsshubRoute(route, "")
-                            }
+                        onAddDoc = { route -> subscribeDocRoute(route, "") },
+                        onParamDoc = { route ->
+                            param = ""
+                            pendingDoc = route
                         }
                     )
                 }
 
-    selectedPreset != null -> {
+                selectedPreset != null -> {
+                    // justAdded 是 SnapshotStateList，读取即被组合跟踪，不需要 remember
+                    val shown = selectedPreset.feeds.filter { cardState(it.url) != DiscoverCardState.HIDDEN }
                     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 4.dp)) {
-    items(selectedPreset.feeds, key = { it.url + it.title }) { feed ->
-                            BuiltinFeedRow(feed) {
-                                if (feed.failureHint == null) onSubscribe(feed.url, feed.title)
-                            }
+                        items(shown, key = { it.url + it.title }) { feed ->
+                            BuiltinFeedRow(
+                                feed = feed,
+                                isSubscribed = cardState(feed.url) == DiscoverCardState.SUBSCRIBED,
+                                onAdd = { subscribeRaw(feed.url, feed.title) },
+                                onPreview = { builtinTap(feed) }
+                            )
                         }
                     }
                 }
 
-    selectedNs != null -> {
-        val shown = remember(selectedNs, selectedCat) {
-            selectedNs.routes.filter { route ->
-                selectedCat == null ||
-                    selectedCat in route.categories ||
-                    selectedCat in selectedNs.categories
-            }
-        }
+                selectedNs != null -> {
+                    val shown = selectedNs.routes.filter { route ->
+                        selectedCat == null ||
+                            selectedCat in route.categories ||
+                            selectedCat in selectedNs.categories
+                    }.filter { route ->
+                        cardState(RsshubCatalog.buildSubscribeUrl(rsshubInstance, route, "")) != DiscoverCardState.HIDDEN
+                    }
                     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 4.dp)) {
                         items(shown, key = { it.path + it.title }) { route ->
                             RouteRow(
@@ -339,12 +416,22 @@ fun DiscoverScreen(
                                 } else {
                                     "一键订阅 · ${route.example}"
                                 },
+                                canAddDirect = !route.needsUserParam,
+                                isSubscribed = cardState(RsshubCatalog.buildSubscribeUrl(rsshubInstance, route, "")) == DiscoverCardState.SUBSCRIBED,
+                                onAdd = {
+                                    if (route.needsUserParam) {
+                                        param = ""
+                                        pendingDoc = route
+                                    } else {
+                                        subscribeDocRoute(route, "")
+                                    }
+                                },
                                 onClick = {
                                     if (route.needsUserParam) {
                                         param = ""
                                         pendingDoc = route
                                     } else {
-                                        onSubscribeRsshubRoute(route, "")
+                                        subscribeDocRoute(route, "")
                                     }
                                 }
                             )
@@ -352,22 +439,22 @@ fun DiscoverScreen(
                     }
                 }
 
-    selectedCat != null -> {
-        val nss = remember(rsshubNamespaces, selectedCat) {
-            rsshubNamespaces.filter { namespace ->
-                selectedCat in namespace.categories ||
-                    namespace.routes.any { selectedCat in it.categories }
-            }
-        }
+                selectedCat != null -> {
+                    val nss = remember(rsshubNamespaces, selectedCat) {
+                        rsshubNamespaces.filter { namespace ->
+                            selectedCat in namespace.categories ||
+                                namespace.routes.any { selectedCat in it.categories }
+                        }
+                    }
                     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 4.dp)) {
-    items(nss, key = { it.id }) { namespace ->
-        val count = namespace.routes.count {
-            selectedCat in it.categories || selectedCat in namespace.categories
-        }
+                        items(nss, key = { it.id }) { namespace ->
+                            val count = namespace.routes.count {
+                                selectedCat in it.categories || selectedCat in namespace.categories
+                            }
                             CategoryCard(
-        title = namespace.name,
-        subtitle = "$count 条路由 · ${namespace.id}",
-        onClick = { rsshubNs = namespace }
+                                title = namespace.name,
+                                subtitle = "$count 条路由 · ${namespace.id}",
+                                onClick = { rsshubNs = namespace }
                             )
                         }
                     }
@@ -405,27 +492,48 @@ fun DiscoverScreen(
                         isPreviewing = isPreviewing,
                         discoveredFeeds = discoveredFeeds,
                         discoveryError = discoveryError,
-                        feedPreview = feedPreview,
                         onDiscover = onDiscover,
-                        onPreviewUrl = onPreviewUrl,
-                        onConfirmSubscribe = onConfirmSubscribe,
-                        onClearPreview = onClearPreview
+                        onPreviewUrl = onPreviewUrl
                     )
                 }
             }
         }
     }
+
+    // 预览框原先只渲染在「网址发现」页签内，精选目录点卡片等于隐形预览；改为页面级 Dialog
+    feedPreview?.let { preview ->
+        Dialog(onDismissRequest = onClearPreview) {
+            Surface(
+                shape = RoundedCornerShape(FoloDimens.CardRadius),
+                tonalElevation = 6.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+            ) {
+                FeedPreviewCard(
+                    preview = preview,
+                    isSubscribing = isSubscribing,
+                    subscribeError = subscribeError,
+                    onSubscribe = onConfirmSubscribe,
+                    onDismiss = onClearPreview
+                )
+            }
+        }
+    }
 }
-
-
 
 @Composable
 private fun SearchResults(
     query: String,
     namespaces: List<RsshubNamespace>,
-    onBuiltin: (BuiltinFeed) -> Unit,
-    onPreset: (RsshubRoute) -> Unit,
-    onDoc: (RsshubDocRoute) -> Unit
+    rsshubInstance: String,
+    cardState: (String) -> DiscoverCardState,
+    onAddBuiltin: (BuiltinFeed) -> Unit,
+    onPreviewBuiltin: (BuiltinFeed) -> Unit,
+    onAddPreset: (RsshubRoute) -> Unit,
+    onParamPreset: (RsshubRoute) -> Unit,
+    onAddDoc: (RsshubDocRoute) -> Unit,
+    onParamDoc: (RsshubDocRoute) -> Unit
 ) {
     val q = query.trim()
     val builtinHits = remember(q) {
@@ -440,29 +548,50 @@ private fun SearchResults(
     }
     val docHits = remember(namespaces, q) { RsshubCatalog.search(namespaces, q) }
 
+    // 右滑/点「+」成功后的源直接不再出现；已订阅的仍可展示但只留「已添加」态
+    val visibleBuiltin = builtinHits.filter { cardState(it.url) != DiscoverCardState.HIDDEN }
+    val visiblePreset = presetHits.filter { entry ->
+        cardState(RsshubPresets.resolve(rsshubInstance, entry.second)) != DiscoverCardState.HIDDEN
+    }
+    val visibleDoc = docHits.filter {
+        cardState(RsshubCatalog.buildSubscribeUrl(rsshubInstance, it, "")) != DiscoverCardState.HIDDEN
+    }
+
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 4.dp)) {
-        if (builtinHits.isEmpty() && presetHits.isEmpty() && docHits.isEmpty()) {
+        if (visibleBuiltin.isEmpty() && visiblePreset.isEmpty() && visibleDoc.isEmpty()) {
             item {
                 Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
                     Text("没有找到相关订阅源，试试其他关键词", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
-        items(builtinHits, key = { "b_${it.url}_${it.title}" }) { feed ->
-            BuiltinFeedRow(feed) { onBuiltin(feed) }
-        }
-        items(presetHits, key = { "p_${it.second.path}_${it.second.title}" }) { (cat, route) ->
-            RouteRow(
-                title = route.title,
-                sub = "$cat · ${if (route.description.isNotBlank()) route.description else "一键订阅"}",
-                onClick = { onPreset(route) }
+        items(visibleBuiltin, key = { "b_${it.url}_${it.title}" }) { feed ->
+            BuiltinFeedRow(
+                feed = feed,
+                isSubscribed = cardState(feed.url) == DiscoverCardState.SUBSCRIBED,
+                onAdd = { onAddBuiltin(feed) },
+                onPreview = { onPreviewBuiltin(feed) }
             )
         }
-        items(docHits, key = { "d_${it.path}_${it.title}" }) { route ->
+        items(visiblePreset, key = { "p_${it.second.path}_${it.second.title}" }) { entry ->
+            val route = entry.second
+            RouteRow(
+                title = route.title,
+                sub = "${entry.first} · ${if (route.description.isNotBlank()) route.description else "一键订阅"}",
+                canAddDirect = !route.needsParam,
+                isSubscribed = cardState(RsshubPresets.resolve(rsshubInstance, route)) == DiscoverCardState.SUBSCRIBED,
+                onAdd = { if (route.needsParam) onParamPreset(route) else onAddPreset(route) },
+                onClick = { if (route.needsParam) onParamPreset(route) else onAddPreset(route) }
+            )
+        }
+        items(visibleDoc, key = { "d_${it.path}_${it.title}" }) { route ->
             RouteRow(
                 title = "${route.nsName} · ${route.title}",
                 sub = route.example.ifBlank { route.path },
-                onClick = { onDoc(route) }
+                canAddDirect = !route.needsUserParam,
+                isSubscribed = cardState(RsshubCatalog.buildSubscribeUrl(rsshubInstance, route, "")) == DiscoverCardState.SUBSCRIBED,
+                onAdd = { if (route.needsUserParam) onParamDoc(route) else onAddDoc(route) },
+                onClick = { if (route.needsUserParam) onParamDoc(route) else onAddDoc(route) }
             )
         }
     }
@@ -503,15 +632,15 @@ private fun RsshubBrowsePane(
                 TextButton(onClick = onRetry) { Text("重试") }
             }
             else -> {
-    val grouped = remember(namespaces) {
-        namespaces
-            .flatMap { ns ->
-                val cats = (ns.categories + ns.routes.flatMap { it.categories }).distinct()
-                cats.map { it to ns }
-            }
-            .groupBy({ it.first }, { it.second })
-            .toSortedMap(compareBy { RsshubCatalog.labelOf(it) })
-    }
+                val grouped = remember(namespaces) {
+                    namespaces
+                        .flatMap { ns ->
+                            val cats = (ns.categories + ns.routes.flatMap { it.categories }).distinct()
+                            cats.map { it to ns }
+                        }
+                        .groupBy({ it.first }, { it.second })
+                        .toSortedMap(compareBy { RsshubCatalog.labelOf(it) })
+                }
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 8.dp)) {
                     grouped.forEach { (cat, nss) ->
                         item(key = cat) {
@@ -537,11 +666,8 @@ private fun UrlDiscoverPane(
     isPreviewing: Boolean,
     discoveredFeeds: List<DiscoveredFeed>,
     discoveryError: String?,
-    feedPreview: FeedPreview?,
     onDiscover: (String) -> Unit,
-    onPreviewUrl: (String) -> Unit,
-    onConfirmSubscribe: () -> Unit,
-    onClearPreview: () -> Unit
+    onPreviewUrl: (String) -> Unit
 ) {
     Column(Modifier.padding(16.dp)) {
         TextField(
@@ -579,24 +705,12 @@ private fun UrlDiscoverPane(
         }
         Spacer(Modifier.height(16.dp))
         when {
-            isPreviewing -> Box(
-                Modifier.fillMaxWidth().padding(32.dp),
-                contentAlignment = Alignment.Center
-            ) { CircularProgressIndicator() }
-            feedPreview != null -> {
-                FeedPreviewCard(
-                    preview = feedPreview,
-                    isSubscribing = isSubscribing,
-                    onSubscribe = onConfirmSubscribe,
-                    onDismiss = onClearPreview
-                )
-            }
             isDiscovering -> Box(
                 Modifier.fillMaxWidth().padding(32.dp),
                 contentAlignment = Alignment.Center
             ) { CircularProgressIndicator() }
             discoveredFeeds.isNotEmpty() -> {
-                Text("发现 ${discoveredFeeds.size} 个订阅源，点击订阅：", style = MaterialTheme.typography.labelLarge)
+                Text("发现 ${discoveredFeeds.size} 个订阅源，点击预览：", style = MaterialTheme.typography.labelLarge)
                 Spacer(Modifier.height(4.dp))
                 LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     items(discoveredFeeds) { feed ->
@@ -675,39 +789,167 @@ private fun CategoryCard(title: String, subtitle: String, onClick: () -> Unit) {
     }
 }
 
+/** 右滑=添加订阅；卡片永不真正划走，是否从列表消失由父级按 HIDDEN 过滤决定 */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun BuiltinFeedRow(feed: BuiltinFeed, onClick: () -> Unit) {
+private fun SwipeToAddRow(
+    enabled: Boolean,
+    onSwipeAdd: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            if (value == SwipeToDismissBoxValue.StartToEnd && enabled) onSwipeAdd()
+            false
+        }
+    )
+    SwipeToDismissBox(
+        state = dismissState,
+        enableDismissFromStartToEnd = enabled,
+        enableDismissFromEndToStart = false,
+        backgroundContent = {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(FoloDimens.CardRadius))
+                    .background(MaterialTheme.colorScheme.primaryContainer)
+                    .padding(horizontal = 20.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                if (dismissState.dismissDirection == SwipeToDismissBoxValue.StartToEnd) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.Add,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "右滑添加订阅",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                }
+            }
+        }
+    ) { content() }
+}
+
+@Composable
+private fun BuiltinFeedRow(
+    feed: BuiltinFeed,
+    isSubscribed: Boolean,
+    onAdd: () -> Unit,
+    onPreview: () -> Unit
+) {
     val blocked = feed.failureHint != null
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
-            .clickable(enabled = !blocked, onClick = onClick),
-        colors = glassCardColors(),
-        border = glassCardBorder()
-    ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
+    SwipeToAddRow(enabled = !blocked && !isSubscribed, onSwipeAdd = onAdd) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            colors = glassCardColors(),
+            border = glassCardBorder()
         ) {
-            Icon(
-                if (blocked) Icons.Default.Warning else Icons.Default.Add,
-                contentDescription = null,
-                tint = if (blocked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-            )
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(feed.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(
-                    "${feed.category} · ${feed.source}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                if (blocked) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                when {
+                    isSubscribed -> Icon(
+                        Icons.Default.Check,
+                        contentDescription = "已添加",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    blocked -> IconButton(onClick = onPreview) {
+                        Icon(
+                            Icons.Default.Warning,
+                            contentDescription = "查看不可用原因",
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
+                    else -> IconButton(onClick = onAdd) {
+                        Icon(Icons.Default.Add, contentDescription = "订阅", tint = MaterialTheme.colorScheme.primary)
+                    }
+                }
+                Spacer(Modifier.width(12.dp))
+                // 行身点击=预览；不可用源则打开原因框，任何情况都不是死点击
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .clickable(onClick = onPreview)
+                ) {
                     Text(
-                        feed.failureHint.orEmpty(),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.error,
+                        feed.title + if (isSubscribed) " · 已添加" else "",
+                        style = MaterialTheme.typography.bodyLarge,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        "${feed.category} · ${feed.source}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (blocked) {
+                        Text(
+                            feed.failureHint.orEmpty(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RouteRow(
+    title: String,
+    sub: String,
+    canAddDirect: Boolean,
+    isSubscribed: Boolean,
+    onAdd: () -> Unit,
+    onClick: () -> Unit
+) {
+    SwipeToAddRow(enabled = canAddDirect && !isSubscribed, onSwipeAdd = onAdd) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            colors = glassCardColors(),
+            border = glassCardBorder()
+        ) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (isSubscribed) {
+                    Icon(Icons.Default.Check, contentDescription = "已添加", tint = MaterialTheme.colorScheme.primary)
+                } else {
+                    IconButton(onClick = onAdd) {
+                        Icon(Icons.Default.Add, contentDescription = "订阅", tint = MaterialTheme.colorScheme.primary)
+                    }
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .clickable(onClick = onClick)
+                ) {
+                    Text(
+                        title + if (isSubscribed) " · 已添加" else "",
+                        style = MaterialTheme.typography.bodyLarge,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        sub,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -721,6 +963,7 @@ private fun BuiltinFeedRow(feed: BuiltinFeed, onClick: () -> Unit) {
 private fun FeedPreviewCard(
     preview: FeedPreview,
     isSubscribing: Boolean,
+    subscribeError: String?,
     onSubscribe: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -758,6 +1001,15 @@ private fun FeedPreviewCard(
                     Text(title, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
                 }
             }
+            // 发现页没有 Snackbar 宿主，订阅失败必须落在卡片里可见
+            subscribeError?.let { err ->
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    err,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
             Spacer(Modifier.height(12.dp))
             Row {
                 Button(onClick = onSubscribe, enabled = !isSubscribing) {
@@ -773,33 +1025,3 @@ private fun FeedPreviewCard(
         }
     }
 }
-
-@Composable
-private fun RouteRow(
-    title: String,
-    sub: String,
-    onClick: () -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
-            .clickable(onClick = onClick),
-        colors = glassCardColors(),
-        border = glassCardBorder()
-    ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(Icons.Default.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            }
-        }
-    }
-}
-
-

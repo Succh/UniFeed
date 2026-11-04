@@ -326,17 +326,18 @@ class UniFeedViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun subscribeRsshubRoute(route: RsshubDocRoute, extraParam: String = "") {
+    fun subscribeRsshubRoute(route: RsshubDocRoute, extraParam: String = "", stayOnDiscover: Boolean = false) {
         val url = RsshubCatalog.buildSubscribeUrl(repo.effectiveRsshubInstance(), route, extraParam)
         val title = if (extraParam.isNotBlank()) "${route.nsName} · ${route.title}: ${extraParam.trim()}"
         else "${route.nsName} · ${route.title}"
-        addFeed(url, title)
+        addFeed(url, title, stayOnDiscover)
     }
 
     /**
-     * 添加订阅：RSSHub 源走即时订阅（先落库、再单次抓取补齐元数据），普通源走预览流程
+     * 添加订阅：RSSHub 源走即时订阅（先落库、再单次抓取补齐元数据），普通源走预览流程。
+     * [stayOnDiscover] = true 时订阅成功后留在发现页（卡片转为已订阅态），不跳转文章列表。
      */
-    fun addFeed(url: String, titleHint: String? = null) {
+    fun addFeed(url: String, titleHint: String? = null, stayOnDiscover: Boolean = false) {
         viewModelScope.launch {
             _uiState.update { it.copy(isSubscribing = true, subscribeError = null) }
             val trimmed = repo.resolveFeedUrl(url)
@@ -344,10 +345,21 @@ class UniFeedViewModel(application: Application) : AndroidViewModel(application)
                 val result = repo.addFeedInstant(trimmed, titleHint)
                 result.onSuccess { feed ->
                     _uiState.update {
-                        it.copy(isSubscribing = false, selectedFeedId = feed.id, isLoading = true)
+                        it.copy(
+                            isSubscribing = false,
+                            isLoading = true,
+                            selectedFeedId = if (stayOnDiscover) it.selectedFeedId else feed.id
+                        )
                     }
-                    repo.refreshFeed(feed.id)
-                    _uiState.update { it.copy(isLoading = false) }
+                    val failure = repo.refreshFeed(feed.id, manual = true)
+                    _uiState.update { st ->
+                        st.copy(
+                            isLoading = false,
+                            // 留在发现页时把首抓失败原因挂到页内错误条，Snackbar 在发现页不可见
+                            subscribeError = if (stayOnDiscover && failure != null)
+                                "已添加「${feed.title}」，但抓取失败：$failure" else st.subscribeError
+                        )
+                    }
                 }.onFailure { e ->
                     _uiState.update { it.copy(isSubscribing = false, subscribeError = e.message ?: "订阅失败") }
                 }
@@ -368,7 +380,8 @@ class UniFeedViewModel(application: Application) : AndroidViewModel(application)
     fun refreshAll() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
-            repo.refreshAll()
+            // UI 触发的都是手动刷新：失败必须播报，不受去重限制
+            repo.refreshAll(manual = true)
             _uiState.update { it.copy(isLoading = false) }
         }
     }
@@ -378,9 +391,9 @@ class UniFeedViewModel(application: Application) : AndroidViewModel(application)
             val feedId = _uiState.value.selectedFeedId
             _uiState.update { it.copy(isLoading = true, error = null) }
             if (feedId != null) {
-                repo.refreshFeed(feedId)
+                repo.refreshFeed(feedId, manual = true)
             } else {
-                repo.refreshAll()
+                repo.refreshAll(manual = true)
             }
             _uiState.update { it.copy(isLoading = false) }
         }
@@ -389,7 +402,7 @@ class UniFeedViewModel(application: Application) : AndroidViewModel(application)
     fun refreshFeedById(feedId: Long) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
-            repo.refreshFeed(feedId)
+            repo.refreshFeed(feedId, manual = true)
             _uiState.update { it.copy(isLoading = false) }
         }
     }

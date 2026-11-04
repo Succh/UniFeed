@@ -262,14 +262,24 @@ class FeedRepository(
     private suspend fun fetchWithSmartFallback(url: String): Pair<ParsedFeed, String> {
         val resolved = resolveFeedUrl(url)
         if (isRsshubUrl(resolved)) {
-            val parsed = try {
-                parser.fetch(resolved)
+            val outcome = try {
+                parser.fetch(resolved) to resolved
             } catch (e: FeedFetchException) {
-                throw e
+                // 生效实例对该路由 503/403/错误页（反爬或上游失败）：换镜像清单里的其他实例重试，
+                // 全部失败才报错，并在文案里提示去设置更换实例
+                if (e.kind != FeedFetchException.Kind.RSSHUB) throw e
+                val path = extractRsshubPath(resolved)
+                val alternatives = if (path.isBlank()) emptyList() else
+                    mirrorCandidates().map { "$it/$path" }.filterNot { it == resolved }.distinct()
+                raceFetch(alternatives)
+                    ?: throw FeedFetchException(
+                        e.kind,
+                        "${e.detail}；公共镜像也全部失败，建议在设置中更换 RSSHub 实例"
+                    )
             } catch (e: Exception) {
                 throw FeedFetchException(FeedFetchException.Kind.NETWORK, e.message ?: "源抓取失败")
             }
-            return requireArticles(parsed, resolved)
+            return requireArticles(outcome.first, outcome.second)
         }
 
         val path = extractRsshubPath(resolved)
@@ -347,8 +357,14 @@ class FeedRepository(
         return if (path.startsWith("rsshub")) path.removePrefix("rsshub").trimStart('/') else path
     }
 
-    suspend fun refreshFeed(feedId: Long) {
-        val feed = feedDao.getById(feedId) ?: return
+    /**
+     * 刷新单个订阅源。
+     * [manual] 为用户主动刷新（下拉/点刷新/订阅首抓），失败一定要播报；
+     * 后台自动刷新时同一源错误文案没变化就不再 emit，避免 toast 刷屏。
+     * 返回 null 表示成功，否则返回失败原因文案。
+     */
+    suspend fun refreshFeed(feedId: Long, manual: Boolean = false): String? {
+        val feed = feedDao.getById(feedId) ?: return null
         try {
             val (parsed, _) = fetchWithSmartFallback(feed.url)
             saveEntries(feed.id, parsed)
@@ -377,11 +393,15 @@ class FeedRepository(
                 }
             )
             feedDao.updateUnreadCount(feed.id)
+            return null
         } catch (e: Exception) {
             val now = System.currentTimeMillis()
             val reason = (e as? FeedFetchException)?.message ?: (e.message ?: "未知错误")
+            var sameAsLast = false
             runCatching {
                 val current = feedDao.getById(feedId) ?: feed
+                // per-feed 上次错误态：文案一模一样说明状态没变化，后台刷新不再重复播报
+                sameAsLast = current.lastRefreshError == reason
                 feedDao.update(
                     current.copy(
                         lastRefreshTime = now,
@@ -389,12 +409,15 @@ class FeedRepository(
                     )
                 )
             }
-            _fetchErrors.emit("刷新「${feed.title}」失败：$reason")
+            if (manual || !sameAsLast) {
+                _fetchErrors.emit("刷新「${feed.title}」失败：$reason")
+            }
+            return reason
         }
     }
 
-    suspend fun refreshAll() {
-        feedDao.observeAll().first().forEach { refreshFeed(it.id) }
+    suspend fun refreshAll(manual: Boolean = false) {
+        feedDao.observeAll().first().forEach { refreshFeed(it.id, manual) }
     }
 
     /**

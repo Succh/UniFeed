@@ -163,9 +163,10 @@ fun UniFeedApp(
                 viewModel.clearError()
             },
             onDiscover = { viewModel.discoverFeeds(it) },
-            onAddDirect = { viewModel.addFeed(it) },
-            onSubscribe = { url, title -> viewModel.addFeed(url, title) },
+            // stayOnDiscover：点「+」/右滑添加后留在发现页，失败原因走页内错误条
+            onAddDirect = { url, title -> viewModel.addFeed(url, title, stayOnDiscover = true) },
             onClearError = { viewModel.clearError() },
+            subscribedUrls = state.feeds.map { it.url }.toSet(),
             feedPreview = state.feedPreview,
             isPreviewing = state.isPreviewing,
             onPreviewUrl = { viewModel.previewFeed(it) },

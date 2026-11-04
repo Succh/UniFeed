@@ -6,7 +6,7 @@ package com.succh.unifeed.data.rss
  */
 class FeedFetchException(
     val kind: Kind,
-    detail: String
+    val detail: String
 ) : Exception("[${kind.label}] $detail") {
 
     enum class Kind(val label: String) {
