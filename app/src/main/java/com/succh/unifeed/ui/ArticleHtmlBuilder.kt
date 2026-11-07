@@ -17,10 +17,32 @@ import java.util.regex.Pattern
  */
 object ArticleHtmlBuilder {
 
-    /** 正文脚本：音视频点按加载 + 脚注跳转/返回。原文 script 已在 normalize 中剥掉 */
+    /** 正文脚本：音视频点按加载 + 脚注跳转/返回 + 图片灯箱桥接。原文 script 已在 normalize 中剥掉 */
     private const val PAGE_JS = """
 (function () {
   var fnStack = [];
+  /* ---- 灯箱：收集正文流图片并按文档顺序打索引 ---- */
+  var lbImgs = [];
+  function lbCollect() {
+    lbImgs = [];
+    var imgs = document.querySelectorAll('.article img');
+    for (var i = 0; i < imgs.length; i++) {
+      var im = imgs[i];
+      // 站点小图标与音视频占位容器里的图不进灯箱
+      if (im.classList.contains('favicon')) continue;
+      if (im.closest && im.closest('.media-ph')) continue;
+      var src = im.getAttribute('src') || '';
+      if (!src) continue;
+      im.setAttribute('data-lb-i', String(lbImgs.length));
+      lbImgs.push(src);
+    }
+  }
+  lbCollect();
+  // 供原生在 onPageFinished 拉取与 data-lb-i 完全一致的图片列表（evaluateJavascript 直接序列化数组）
+  window.__uniFeedLightboxImages = function () { return lbImgs; };
+  window.__uniFeedLightboxTap = function (i) {
+    try { window.UniFeedLightbox && window.UniFeedLightbox.onImageTap(i); } catch (e) {}
+  };
   function flashScroll(el) {
     if (!el) return;
     el.classList.remove('fn-flash');
@@ -62,6 +84,14 @@ object ArticleHtmlBuilder {
       return;
     }
     var a = ev.target.closest('a');
+    // 正文流图片：点按即进灯箱（带 data-lb-i 的才是灯箱图，媒体占位里的图不算）
+    var img = ev.target.closest('img');
+    if (img && img.hasAttribute('data-lb-i')) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      window.__uniFeedLightboxTap(parseInt(img.getAttribute('data-lb-i'), 10) || 0);
+      return;
+    }
     if (!a) return;
     var href = a.getAttribute('href') || '';
     var id = hashId(href);
