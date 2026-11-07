@@ -275,7 +275,7 @@ private fun ZoomableBitmap(
                                 animate(initialValue = s0, targetValue = target, animationSpec = tween(200)) { v, _ ->
                                     val k = v / s0
                                     scale = v
-                                    offset = if (v <= 1.01f) Offset.Zero else t0 * k + (1f - k) * cRel
+                                    offset = if (v <= 1.01f) Offset.Zero else t0 * k + cRel * (1f - k)
                                 }
                             }
                         }
@@ -300,7 +300,7 @@ private fun ZoomableBitmap(
                                 val center = Offset(size.width / 2f, size.height / 2f)
                                 val cRel = centroid - center
                                 // 围绕质心缩放：保持质心下的内容点不动，再叠加双指整体位移
-                                val next = offset * effective + (1f - effective) * cRel + pan
+                                val next = offset * effective + cRel * (1f - effective) + pan
                                 scale = newScale
                                 offset = if (newScale <= 1.01f) Offset.Zero
                                 else clampOffset(next, newScale, containerSize, bitmap)
