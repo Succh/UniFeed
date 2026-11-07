@@ -1,6 +1,8 @@
 package com.succh.unifeed.ui
 
 import android.annotation.SuppressLint
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.view.ViewGroup
 import android.webkit.WebResourceRequest
@@ -182,6 +184,10 @@ fun ReaderScreen(
     }
     val baseUrl = entry.link?.takeIf { it.startsWith("http") }
 
+    // 灯箱：正文图片列表随页面加载收集，与 PAGE_JS 打的 data-lb-i 索引一一对应；null 表示未打开
+    var lightboxUrls by remember(entry.id) { mutableStateOf<List<String>>(emptyList()) }
+    var lightboxData by remember(entry.id) { mutableStateOf<ReaderLightboxData?>(null) }
+
     Scaffold(
         containerColor = Color.Transparent,
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -307,6 +313,29 @@ fun ReaderScreen(
                             settings.blockNetworkImage = false
                             settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                             settings.mediaPlaybackRequiresUserGesture = true
+                            // JS 桥回调在 WebView 的 JS 线程，切回主线程再改 Compose 状态
+                            addJavascriptInterface(
+                                LightboxBridge { index ->
+                                    Handler(Looper.getMainLooper()).post {
+                                        val urls = lightboxUrls
+                                        if (urls.isNotEmpty()) {
+                                            lightboxData = ReaderLightboxData(urls, index, baseUrl)
+                                        } else {
+                                            // 列表尚未收集到时兜底现拉一次（返回数组，evaluateJavascript 直接序列化）
+                                            evaluateJavascript(
+                                                "window.__uniFeedLightboxImages ? window.__uniFeedLightboxImages() : []"
+                                            ) { json ->
+                                                val parsed = parseLightboxUrls(json)
+                                                if (parsed.isNotEmpty()) {
+                                                    lightboxUrls = parsed
+                                                    lightboxData = ReaderLightboxData(parsed, index, baseUrl)
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                "UniFeedLightbox"
+                            )
                             onProgress = { ratio ->
                                 currentProgress = ratio
                                 progressByEntry[entry.id] = ratio
@@ -331,6 +360,13 @@ fun ReaderScreen(
 
                                 override fun onPageFinished(view: WebView?, url: String?) {
                                     (view as? ProgressTrackingWebView)?.restorePendingProgress()
+                                    // 收集正文图片列表，与 PAGE_JS 打的 data-lb-i 索引一一对应
+                                    view?.evaluateJavascript(
+                                        "window.__uniFeedLightboxImages ? window.__uniFeedLightboxImages() : []"
+                                    ) { json ->
+                                        val urls = parseLightboxUrls(json)
+                                        if (urls.isNotEmpty()) lightboxUrls = urls
+                                    }
                                 }
                             }
                             loadDataWithBaseURL(baseUrl, articleHtml, "text/html", "UTF-8", null)
@@ -370,6 +406,14 @@ fun ReaderScreen(
         AaSettingsPanel(
             prefs = prefs,
             onDismiss = { showAaPanel = false }
+        )
+    }
+
+    // 灯箱是叠在阅读页上的浮层：不动 WebView 滚动位置，朗读也不受开关影响
+    lightboxData?.let { data ->
+        ReaderLightbox(
+            data = data,
+            onDismiss = { lightboxData = null }
         )
     }
 }
