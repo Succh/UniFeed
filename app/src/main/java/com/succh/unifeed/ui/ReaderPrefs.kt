@@ -8,6 +8,9 @@ import com.succh.unifeed.data.cache.ArticleRetention
 import com.succh.unifeed.data.cache.ImageCacheLimit
 import com.succh.unifeed.data.rss.RsshubEndpoints
 import com.succh.unifeed.data.work.RefreshInterval
+import com.succh.unifeed.ui.theme.AccentTheme
+import com.succh.unifeed.ui.theme.GlassBlur
+import com.succh.unifeed.ui.theme.ThemeMode
 
 enum class ReaderTheme { LIGHT, SEPIA, DARK }
 
@@ -186,6 +189,33 @@ class ReaderPrefs(context: Context) {
             sp.edit().putBoolean(KEY_UNREAD_BADGE, value).apply()
         }
 
+    /** 皮肤：深浅模式（跟随系统 / 手动固定） */
+    private val _themeMode = mutableStateOf(ThemeMode.fromName(sp.getString(KEY_THEME_MODE, null)))
+    var themeMode: ThemeMode
+        get() = _themeMode.value
+        set(value) {
+            _themeMode.value = value
+            sp.edit().putString(KEY_THEME_MODE, value.name).apply()
+        }
+
+    /** 皮肤：主题色预设 */
+    private val _accent = mutableStateOf(AccentTheme.fromName(sp.getString(KEY_ACCENT, null)))
+    var accent: AccentTheme
+        get() = _accent.value
+        set(value) {
+            _accent.value = value
+            sp.edit().putString(KEY_ACCENT, value.name).apply()
+        }
+
+    /** 皮肤：背景光晕模糊强度 */
+    private val _glassBlur = mutableStateOf(GlassBlur.fromName(sp.getString(KEY_GLASS_BLUR, null)))
+    var glassBlur: GlassBlur
+        get() = _glassBlur.value
+        set(value) {
+            _glassBlur.value = value
+            sp.edit().putString(KEY_GLASS_BLUR, value.name).apply()
+        }
+
     private fun loadTheme(): ReaderTheme {
         val name = sp.getString(KEY_THEME, ReaderTheme.LIGHT.name)
         return ReaderTheme.entries.firstOrNull { it.name == name } ?: ReaderTheme.LIGHT
@@ -245,6 +275,9 @@ class ReaderPrefs(context: Context) {
         private const val KEY_ARTICLE_RETENTION = "article_retention"
         private const val KEY_UNREAD_BADGE = "unread_badge_enabled"
         private const val KEY_TTS_RATE = "tts_rate"
+        private const val KEY_THEME_MODE = "theme_mode"
+        private const val KEY_ACCENT = "accent_theme"
+        private const val KEY_GLASS_BLUR = "glass_blur"
 
         /** 直接读 SP，供角标同步在 IO 线程使用，不新建 Compose 状态 */
         fun unreadBadgeEnabled(context: Context): Boolean {

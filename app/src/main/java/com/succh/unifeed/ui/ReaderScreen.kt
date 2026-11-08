@@ -1,6 +1,7 @@
 package com.succh.unifeed.ui
 
 import android.annotation.SuppressLint
+import androidx.activity.compose.BackHandler
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -187,6 +188,16 @@ fun ReaderScreen(
     // 灯箱：正文图片列表随页面加载收集，与 PAGE_JS 打的 data-lb-i 索引一一对应；null 表示未打开
     var lightboxUrls by remember(entry.id) { mutableStateOf<List<String>>(emptyList()) }
     var lightboxData by remember(entry.id) { mutableStateOf<ReaderLightboxData?>(null) }
+
+    // 手势/系统返回：有浮层先关浮层，否则回文章列表；没有这层 BackHandler 会直达 Activity 直接退出 APP。
+    // 灯箱(Dialog)和 Aa 面板(ModalBottomSheet)各自窗口通常已拦截返回，这里兜底一层保证次序正确。
+    BackHandler {
+        when {
+            lightboxData != null -> lightboxData = null
+            showAaPanel -> showAaPanel = false
+            else -> onBack()
+        }
+    }
 
     Scaffold(
         containerColor = Color.Transparent,

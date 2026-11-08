@@ -21,6 +21,7 @@ import com.succh.unifeed.ui.theme.glassHairline
 
 @Composable
 fun UniFeedApp(
+    prefs: ReaderPrefs,
     viewModel: UniFeedViewModel = viewModel(),
     openEntryId: Long? = null,
     onOpenEntryConsumed: () -> Unit = {}
@@ -32,7 +33,6 @@ fun UniFeedApp(
     var readerList by remember { mutableStateOf<List<Entry>>(emptyList())}
     var tab by remember { mutableIntStateOf(0) }
     val context = LocalContext.current
-    val prefs = remember { ReaderPrefs(context) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     // 桌面小部件点某条文章：按 id 打开阅读器

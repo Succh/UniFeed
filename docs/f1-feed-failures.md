@@ -4,6 +4,20 @@
 抓取策略：桌面/移动 UA + Referer 重试、跟随重定向、编码嗅探（UTF-8/GBK）、残缺 XML 尽力解析、RSSHub 多镜像竞速。
 复核时间：2026-10-25。默认实例 `https://succh.zone.id`，镜像含 `hub.slarker.me`、`rsshub.rssforever.com`。
 
+## F2 批次镜像复核（2026-11-07，逐实例 curl /healthz + 路由实测）
+
+| 实例 | 结果 | 处置 |
+| --- | --- | --- |
+| succh.zone.id（默认自建） | /healthz 200，/36kr/hot-list 200 FEED | 保留（默认，优先级最高） |
+| rsshub.rssforever.com | /healthz 200，/hackernews 200；个别路由偶发慢/空响应 | 保留 |
+| hub.slarker.me | /healthz 200，/hackernews 200；/36kr 路由级超时 | 保留 |
+| rsshub.cups.moe | /healthz 200，/36kr/hot-list 200 FEED | 保留 |
+| rss.owo.nz | DNS 解析失败（域名已失效） | 移除 |
+| rsshub.ktachibana.party | /healthz、/36kr、/hackernews 均 200 | 新补入 |
+| rsshub.app（官方） | 数据中心 IP 被 Cloudflare 403，手机网络通常可用 | 保留（官方兜底） |
+
+自建实例部署与自查步骤见 `docs/rsshub-selfhost.md`。
+
 ## 已修复（路径对照 `/api/namespace` 更正）
 
 | 源名 | 旧 URL | 新 URL | 原因 |

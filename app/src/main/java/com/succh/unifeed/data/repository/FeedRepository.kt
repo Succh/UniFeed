@@ -543,11 +543,27 @@ class FeedRepository(
         }
     }
 
-    /** 判断 RSS 内容是否只有摘要（长度过短视为不完整） */
+    /**
+     * 判断 RSS 内容是否只有摘要/被截断。
+     * 双信号：① 正文尾部带明确截断标记（阅读全文/继续阅读/Read more 等）必判不完整；
+     * ② 去标签后长度过短（< 400 字）保守视为摘要。
+     * 正文够长又没有截断标记就当作完整全文，不再显示「加载全文」按钮要求用户二次点按。
+     */
     fun isContentIncomplete(entry: Entry): Boolean {
-        val plain = stripTags(entry.content ?: entry.summary ?: "")
-        return plain.length < 400 && !entry.link.isNullOrBlank()
+        if (entry.link.isNullOrBlank()) return false
+        val raw = entry.content ?: entry.summary ?: ""
+        if (raw.isBlank()) return true
+        val plain = stripTags(raw)
+        if (TRUNCATION_MARKER.containsMatchIn(plain.takeLast(200))) return true
+        return plain.length < 400
     }
+
+    /** 常见 RSS 截断标记；只扫正文尾部，避免正文中间的正常用词误判 */
+    private val TRUNCATION_MARKER = Regex(
+        "阅读(全文|完整内容|余下内容|剩余.{0,6}(全文|内容))|继续阅读|查看(全文|原文|更多精彩)|" +
+            "展开(全文|更多)|打开APP查看|read more|continue reading",
+        RegexOption.IGNORE_CASE
+    )
 
     fun observeFolders(): Flow<List<Folder>> = folderDao.observeAll()
 

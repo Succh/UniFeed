@@ -13,11 +13,11 @@ object RsshubEndpoints {
     const val RSSFOREVER = "https://rsshub.rssforever.com"
     const val SLARKER = "https://hub.slarker.me"
     const val CUPS = "https://rsshub.cups.moe"
-    const val OWO = "https://rss.owo.nz"
+    const val KTACHIBANA = "https://rsshub.ktachibana.party"
     const val OFFICIAL = "https://rsshub.app"
 
-    /** 竞速候选，顺序即优先级 */
-    val MIRRORS = listOf(DEFAULT, RSSFOREVER, SLARKER, CUPS, OWO, OFFICIAL)
+    /** 竞速候选，顺序即优先级（2026-11-07 逐实例实测：owo.nz DNS 已死移除，ktachibana 补入） */
+    val MIRRORS = listOf(DEFAULT, RSSFOREVER, SLARKER, CUPS, KTACHIBANA, OFFICIAL)
 
     /** 路由文档 /api/namespace 的兜底实例 */
     val CATALOG_FALLBACKS = listOf(DEFAULT, RSSFOREVER, SLARKER, OFFICIAL)

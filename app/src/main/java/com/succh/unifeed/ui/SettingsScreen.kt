@@ -1,8 +1,13 @@
 package com.succh.unifeed.ui
 
+import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,15 +17,20 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -41,9 +51,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.succh.unifeed.data.cache.ArticleRetention
 import com.succh.unifeed.data.cache.ByteSize
@@ -54,10 +66,17 @@ import com.succh.unifeed.data.rss.RsshubEndpoints
 import com.succh.unifeed.data.work.RefreshInterval
 import com.succh.unifeed.data.work.RefreshWorker
 import com.succh.unifeed.desktop.UnreadBadge
+import com.succh.unifeed.ui.theme.AccentTheme
 import com.succh.unifeed.ui.theme.FoloDimens
+import com.succh.unifeed.ui.theme.GlassBlur
 import com.succh.unifeed.ui.theme.GlassPanel
+import com.succh.unifeed.ui.theme.ThemeMode
+import com.succh.unifeed.ui.theme.GlassTokens
 import com.succh.unifeed.ui.theme.glassChipBorder
 import com.succh.unifeed.ui.theme.glassChipColors
+import com.succh.unifeed.ui.theme.glassContentColor
+import com.succh.unifeed.ui.theme.glassGlowColor
+import com.succh.unifeed.ui.theme.glassMutedContentColor
 import com.succh.unifeed.ui.theme.glassTopAppBarColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -173,8 +192,76 @@ fun SettingsScreen(
                 Text(
                     "关闭时，打开文章后停留超过 2 秒才标记已读，快速划过不标。",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = glassMutedContentColor()
                 )
+            }
+
+            // 皮肤自定义：深浅模式 / 主题色 / 背景模糊，改动即时生效即预览
+            GlassPanel {
+                Text("外观", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "深浅模式决定玻璃底色与文字对比；主题色与模糊强度改动后全屏立即预览。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = glassMutedContentColor()
+                )
+                Text("深浅模式", style = MaterialTheme.typography.labelMedium)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ThemeMode.entries.forEach { mode ->
+                        val selected = prefs.themeMode == mode
+                        FilterChip(
+                            selected = selected,
+                            onClick = { prefs.themeMode = mode },
+                            label = { Text(mode.label) },
+                            colors = glassChipColors(),
+                            border = glassChipBorder(selected)
+                        )
+                    }
+                }
+                Text("主题色", style = MaterialTheme.typography.labelMedium)
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    AccentTheme.entries.forEach { accentOption ->
+                        val selected = prefs.accent == accentOption
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(accentOption.swatch)
+                                .border(
+                                    width = if (selected) 2.5.dp else GlassTokens.BorderWidth,
+                                    color = if (selected) {
+                                        glassContentColor()
+                                    } else {
+                                        glassGlowColor()
+                                    },
+                                    shape = CircleShape
+                                )
+                                .clickable { prefs.accent = accentOption },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (selected) {
+                                Icon(
+                                    Icons.Filled.Check,
+                                    contentDescription = accentOption.label,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+                Text("背景模糊", style = MaterialTheme.typography.labelMedium)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    GlassBlur.entries.forEach { blur ->
+                        val selected = prefs.glassBlur == blur
+                        FilterChip(
+                            selected = selected,
+                            onClick = { prefs.glassBlur = blur },
+                            label = { Text(blur.label) },
+                            colors = glassChipColors(),
+                            border = glassChipBorder(selected)
+                        )
+                    }
+                }
             }
 
             GlassPanel {
@@ -182,7 +269,7 @@ fun SettingsScreen(
                 Text(
                     "标题含关键字时自动处理。隐藏：不出现在列表且不计未读；自动标已读：仍可见但标为已读。",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = glassMutedContentColor()
                 )
                 OutlinedTextField(
                     value = keywordInput,
@@ -228,7 +315,7 @@ fun SettingsScreen(
                     Text(
                         "暂无屏蔽规则。添加后对新文章立即生效，也会回扫已有文章。",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = glassMutedContentColor()
                     )
                 } else {
                     if (globalRules.isNotEmpty()) {
@@ -258,13 +345,13 @@ fun SettingsScreen(
                 Text(
                     "关闭某源的「套用全局过滤」后，该源只走专属规则。可在订阅源菜单里开关。",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = glassMutedContentColor()
                 )
                 if (uiState.feeds.isEmpty()) {
                     Text(
                         "还没有订阅源。",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = glassMutedContentColor()
                     )
                 } else {
                     uiState.feeds.forEach { feed ->
@@ -285,8 +372,25 @@ fun SettingsScreen(
                 Text(
                     "填写自建或第三方实例地址，优先使用；失败时自动回退公共镜像。留空则使用默认自建实例。",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = glassMutedContentColor()
                 )
+                Text(
+                    "想自己部署？Docker Compose 一键自建 RSSHub（含 Redis 缓存与 HTTPS 要点）见仓库文档 docs/rsshub-selfhost.md。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = glassMutedContentColor()
+                )
+                TextButton(
+                    onClick = {
+                        runCatching {
+                            context.startActivity(
+                                Intent(
+                                    Intent.ACTION_VIEW,
+                                    "https://github.com/Succh/UniFeed/blob/main/docs/rsshub-selfhost.md".toUri()
+                                )
+                            )
+                        }
+                    }
+                ) { Text("打开自建部署指南 ↗") }
                 OutlinedTextField(
                     value = instanceInput,
                     onValueChange = { instanceInput = it },
@@ -362,7 +466,7 @@ fun SettingsScreen(
                 Text(
                     "导入或导出订阅列表。导出走系统分享/保存，每个源含 title 与 xmlUrl。",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = glassMutedContentColor()
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = { exportOpml() }) {
@@ -383,12 +487,12 @@ fun SettingsScreen(
                 Text(
                     "显示未读文章数。不支持角标的启动器可能不显示。",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = glassMutedContentColor()
                 )
                 Text(
                     "可长按桌面空白处添加「最新未读」小部件。",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = glassMutedContentColor()
                 )
             }
 
@@ -397,7 +501,7 @@ fun SettingsScreen(
                 Text(
                     "按所选间隔在后台抓取新文章。选「手动」后只保留下拉刷新，不再跑周期任务。",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = glassMutedContentColor()
                 )
                 Text("刷新间隔", style = MaterialTheme.typography.labelMedium)
                 RefreshInterval.entries.chunked(2).forEach { rowSlots ->
@@ -421,7 +525,7 @@ fun SettingsScreen(
                     Text(
                         "手动：关闭后台周期刷新，需要时在列表下拉即可。",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = glassMutedContentColor()
                     )
                 }
                 SwitchSetting("仅 Wi-Fi 时后台刷新", prefs.refreshWifiOnly) {
@@ -435,7 +539,7 @@ fun SettingsScreen(
                         "关闭后，任意可用网络都会触发后台刷新。"
                     },
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = glassMutedContentColor()
                 )
             }
 
@@ -444,7 +548,7 @@ fun SettingsScreen(
                 Text(
                     "清理图片缓存不影响文章正文、收藏与稍后读。旧文章清理只删除已读且未收藏、未稍后读的文章，未读一律保留。",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = glassMutedContentColor()
                 )
                 Text("图片缓存上限", style = MaterialTheme.typography.labelMedium)
                 ImageCacheLimit.entries.chunked(2).forEach { rowSlots ->
@@ -467,7 +571,7 @@ fun SettingsScreen(
                 Text(
                     "当前占用：${ByteSize.format(cacheBytes)}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = glassMutedContentColor()
                 )
                 Button(
                     onClick = {
@@ -521,7 +625,7 @@ fun SettingsScreen(
                     Text(
                         "当前为不清理：不会按时间删除文章。",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = glassMutedContentColor()
                     )
                 }
             }
@@ -531,7 +635,7 @@ fun SettingsScreen(
                 Text(
                     "UniFeed v1.1 • 开源 RSS 阅读器",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = glassMutedContentColor()
                 )
             }
         }
@@ -592,7 +696,7 @@ private fun FilterRuleRow(
                     Text(
                         subtitle,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = glassMutedContentColor()
                     )
                 }
             }

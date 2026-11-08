@@ -24,6 +24,8 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBarColors
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -33,6 +35,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -72,6 +75,23 @@ fun glassCardColor(): Color {
     return MaterialTheme.colorScheme.surface.copy(alpha = alpha)
 }
 
+/**
+ * 玻璃面板主文字色：按玻璃实际底色（透明度与背景合成后）的亮度取深字或浅字，
+ * 深底配浅字、浅底配深字，不依赖「onSurface 一定和玻璃底对比」的假设。
+ */
+@Composable
+fun glassContentColor(): Color {
+    val effective = glassCardColor().compositeOver(MaterialTheme.colorScheme.background)
+    return if (effective.luminance() < 0.5f) Color(0xFFE8E8ED) else Color(0xFF1C1C1E)
+}
+
+/** 玻璃面板上的次级说明文字色：同样跟随玻璃实际底色 */
+@Composable
+fun glassMutedContentColor(): Color {
+    val effective = glassCardColor().compositeOver(MaterialTheme.colorScheme.background)
+    return if (effective.luminance() < 0.5f) Color(0xFFA6A6AD) else Color(0xFF6E6E73)
+}
+
 /** 柔光描边，浅色偏白、深色偏淡白 */
 @Composable
 fun glassGlowColor(): Color =
@@ -80,7 +100,7 @@ fun glassGlowColor(): Color =
 @Composable
 fun glassCardColors() = CardDefaults.cardColors(
     containerColor = glassCardColor(),
-    contentColor = MaterialTheme.colorScheme.onSurface
+    contentColor = glassContentColor()
 )
 
 @Composable
@@ -108,9 +128,9 @@ fun glassTextFieldColors() = TextFieldDefaults.colors(
 @Composable
 fun glassChipColors() = FilterChipDefaults.filterChipColors(
     containerColor = glassCardColor(),
-    labelColor = MaterialTheme.colorScheme.onSurface,
+    labelColor = glassContentColor(),
     selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
-    selectedLabelColor = MaterialTheme.colorScheme.onSurface
+    selectedLabelColor = glassContentColor()
 )
 
 @Composable
@@ -171,10 +191,12 @@ fun Modifier.glassHairline(color: Color): Modifier = this.drawWithContent {
 
 /**
  * 全屏环境光晕：模糊色斑铺在 grouped 背景上，玻璃控件才能看出半透明。
+ * [blurFactor] 由皮肤设置的模糊强度档位传入，缩放各色斑的模糊半径。
  */
 @Composable
 fun GlassBackdrop(
     modifier: Modifier = Modifier,
+    blurFactor: Float = 1f,
     content: @Composable BoxScope.() -> Unit
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -188,7 +210,7 @@ fun GlassBackdrop(
                 .size(280.dp)
                 .align(Alignment.TopStart)
                 .offset(x = (-48).dp, y = 72.dp)
-                .blur(64.dp)
+                .blur(64.dp * blurFactor)
                 .background(scheme.primary.copy(alpha = 0.22f), CircleShape)
         )
         Box(
@@ -196,7 +218,7 @@ fun GlassBackdrop(
                 .size(240.dp)
                 .align(Alignment.TopEnd)
                 .offset(x = 36.dp, y = 180.dp)
-                .blur(72.dp)
+                .blur(72.dp * blurFactor)
                 .background(scheme.tertiary.copy(alpha = 0.18f), CircleShape)
         )
         Box(
@@ -204,7 +226,7 @@ fun GlassBackdrop(
                 .size(300.dp)
                 .align(Alignment.BottomCenter)
                 .offset(y = 80.dp)
-                .blur(80.dp)
+                .blur(80.dp * blurFactor)
                 .background(scheme.primaryContainer.copy(alpha = 0.40f), CircleShape)
         )
         content()
@@ -213,7 +235,7 @@ fun GlassBackdrop(
 
 /**
  * 设置页 / 分组面板用的玻璃卡片容器。
- * 内容走 onSurface，保证浅色与深色背景下对比度。
+ * 面板内默认文字色跟随玻璃实际底色（深底配浅字），说明文字可用 glassMutedContentColor。
  */
 @Composable
 fun GlassPanel(
@@ -223,12 +245,14 @@ fun GlassPanel(
     verticalArrangement: Arrangement.Vertical = Arrangement.spacedBy(8.dp),
     content: @Composable ColumnScope.() -> Unit
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .glassSurface(shape = shape)
-            .padding(contentPadding),
-        verticalArrangement = verticalArrangement,
-        content = content
-    )
+    CompositionLocalProvider(LocalContentColor provides glassContentColor()) {
+        Column(
+            modifier = modifier
+                .fillMaxWidth()
+                .glassSurface(shape = shape)
+                .padding(contentPadding),
+            verticalArrangement = verticalArrangement,
+            content = content
+        )
+    }
 }
