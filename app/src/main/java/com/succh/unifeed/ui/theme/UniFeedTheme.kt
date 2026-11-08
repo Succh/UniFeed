@@ -52,16 +52,36 @@ private val DarkColors = darkColorScheme(
 )
 
 /**
- * 跟随系统深浅色的 iOS 玻璃拟态主题。
+ * iOS 玻璃拟态主题：深浅模式可跟随系统或手动固定，主题色从皮肤预设取。
  * 所有界面通过 MaterialTheme.colorScheme / shapes 取色与圆角。
  */
 @Composable
 fun UniFeedTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    themeMode: ThemeMode = ThemeMode.FOLLOW_SYSTEM,
+    accent: AccentTheme = AccentTheme.ORANGE,
     content: @Composable () -> Unit
 ) {
+    val darkTheme = when (themeMode) {
+        ThemeMode.FOLLOW_SYSTEM -> isSystemInDarkTheme()
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+    }
+    // 皮肤主题色只换 primary/primaryContainer 系；玻璃底、文字色由深浅模式决定
+    val scheme = if (darkTheme) {
+        DarkColors.copy(
+            primary = accent.darkPrimary,
+            primaryContainer = accent.darkContainer,
+            onPrimaryContainer = accent.onDarkContainer
+        )
+    } else {
+        LightColors.copy(
+            primary = accent.lightPrimary,
+            primaryContainer = accent.lightContainer,
+            onPrimaryContainer = accent.onLightContainer
+        )
+    }
     MaterialTheme(
-        colorScheme = if (darkTheme) DarkColors else LightColors,
+        colorScheme = scheme,
         shapes = FoloShapes,
         content = content
     )

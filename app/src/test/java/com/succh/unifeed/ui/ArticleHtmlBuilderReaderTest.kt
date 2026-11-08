@@ -96,7 +96,7 @@ class ArticleHtmlBuilderReaderTest {
         requireNotNull(ph)
         assertEquals("audio", ph.attr("data-kind"))
         assertEquals(1, ph.select(".media-play").size)
-        assertEquals("音频", ph.selectFirst(".media-caption")!!.text())
+        assertEquals("音频 · 点按播放", ph.selectFirst(".media-caption")!!.text())
         val source = ph.selectFirst("audio source")
         requireNotNull(source)
         assertTrue(source.attr("src").isBlank())
@@ -173,5 +173,65 @@ class ArticleHtmlBuilderReaderTest {
         assertEquals(0, doc.select("a.fn-ref").size)
         assertEquals(0, doc.select("a.fn-back").size)
         assertEquals("#intro", doc.selectFirst("a[href=#intro]")!!.attr("href"))
+    }
+
+    @Test
+    fun mixedPlainTextAndTagsAreParsedAsHtmlNotEscaped() {
+        // 回归：正文以纯文本开头、后面才有 <a>/<iframe>，不能整段转义成可见标签文字
+        val html = ArticleHtmlBuilder.normalize(
+            "视频采访了一位反偷拍自愿者。<a href=\"https://www.bilibili.com/video/BV1oVxf6ZEhu/\">视频链接</a>" +
+                "<iframe src=\"//player.bilibili.com/player.html?aid=1&bvid=BV1oVxf6ZEhu\"></iframe>",
+            null
+        )
+        val doc = Jsoup.parseBodyFragment(html)
+        assertFalse(doc.body().html().contains("&lt;a href"))
+        assertFalse(doc.body().html().contains("&lt;iframe"))
+        assertEquals("https://www.bilibili.com/video/BV1oVxf6ZEhu/", doc.selectFirst("a")!!.attr("href"))
+        // 协议相对地址补全为 https，iframe 收成可点按加载的占位封面
+        val ph = doc.selectFirst("div.media-ph")
+        requireNotNull(ph)
+        assertEquals("iframe", ph.attr("data-kind"))
+        assertEquals("https://player.bilibili.com/player.html?aid=1&bvid=BV1oVxf6ZEhu", ph.attr("data-src"))
+    }
+
+    @Test
+    fun purePlainTextWithoutTagsStaysEscaped() {
+        val html = ArticleHtmlBuilder.normalize("只是一段纯文本，没有任何标签 1<2 且 a和b", null)
+        assertTrue(html.startsWith("<p>"))
+        assertTrue(html.contains("只是一段纯文本"))
+        assertFalse(html.contains("<a "))
+    }
+
+    @Test
+    fun imgWithOnlySrcsetGetsLargestCandidateAsSrc() {
+        // 回归：img 只有 srcset、没有 src 时，原来 removeAttr("srcset") 后无图可显
+        val html = ArticleHtmlBuilder.normalize(
+            """<img srcset="/a-480.jpg 480w, /a-1080.jpg 1080w" src="">""",
+            "https://example.com/post"
+        )
+        val doc = Jsoup.parseBodyFragment(html)
+        val img = doc.selectFirst("img")
+        requireNotNull(img)
+        assertEquals("https://example.com/a-1080.jpg", img.attr("src"))
+        assertTrue(img.attr("srcset").isBlank())
+    }
+
+    @Test
+    fun imgWithoutAnyResolvableSourceBecomesPlaceholder() {
+        val html = ArticleHtmlBuilder.normalize("""<img src="">""", null)
+        val doc = Jsoup.parseBodyFragment(html)
+        assertEquals(0, doc.select("img").size)
+        requireNotNull(doc.selectFirst("div.img-missing"))
+    }
+
+    @Test
+    fun pickFromSrcsetPrefersLargestDescriptorOrLastFallback() {
+        assertEquals(
+            "b.jpg",
+            ArticleHtmlBuilder.pickFromSrcset("a.jpg 480w, b.jpg 1080w, c.jpg 720w")
+        )
+        assertEquals("b.jpg", ArticleHtmlBuilder.pickFromSrcset("a.jpg, b.jpg"))
+        assertEquals("a.jpg", ArticleHtmlBuilder.pickFromSrcset("a.jpg 480w"))
+        assertEquals(null, ArticleHtmlBuilder.pickFromSrcset(" "))
     }
 }

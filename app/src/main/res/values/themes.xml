@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <style name="Theme.UniFeed" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:statusBarColor">@color/primary</item>
         <item name="android:navigationBarColor">@android:color/white</item>
+        <!-- 应用已原生支持深浅色，禁用系统强制深色：避免 ROM 把玻璃底染深而文字仍是深色（深字深底看不清） -->
+        <item name="android:forceDarkAllowed" tools:targetApi="q">false</item>
     </style>
 
     <style name="Theme.UniFeed.Starting" parent="Theme.UniFeed">

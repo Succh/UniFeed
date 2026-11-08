@@ -56,31 +56,36 @@ object ArticleHtmlBuilder {
     if (i < 0) return '';
     try { return decodeURIComponent(href.slice(i + 1)); } catch (e) { return href.slice(i + 1); }
   }
+  /* 占位封面点按加载真实媒体；is-on 幂等，委托与直绑双路径同时命中也只加载一次 */
+  function loadMedia(ph) {
+    if (!ph || ph.classList.contains('is-on')) return;
+    ph.classList.add('is-on');
+    var kind = ph.getAttribute('data-kind') || 'video';
+    if (kind === 'iframe') {
+      var src = ph.getAttribute('data-src') || '';
+      if (!src) return;
+      var f = document.createElement('iframe');
+      f.src = src;
+      f.setAttribute('allowfullscreen', '');
+      f.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture');
+      ph.appendChild(f);
+      return;
+    }
+    var media = ph.querySelector(kind) || ph.querySelector('video, audio');
+    if (!media) return;
+    var ds = media.getAttribute('data-src');
+    if (ds) media.setAttribute('src', ds);
+    var sources = media.querySelectorAll('source[data-src]');
+    for (var i = 0; i < sources.length; i++) {
+      sources[i].setAttribute('src', sources[i].getAttribute('data-src'));
+    }
+    if (media.load) media.load();
+    if (media.play) { try { media.play(); } catch (e) {} }
+  }
   document.addEventListener('click', function (ev) {
     var ph = ev.target.closest('.media-ph');
     if (ph && !ph.classList.contains('is-on')) {
-      ph.classList.add('is-on');
-      var kind = ph.getAttribute('data-kind') || 'video';
-      if (kind === 'iframe') {
-        var src = ph.getAttribute('data-src') || '';
-        if (!src) return;
-        var f = document.createElement('iframe');
-        f.src = src;
-        f.setAttribute('allowfullscreen', '');
-        f.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture');
-        ph.appendChild(f);
-        return;
-      }
-      var media = ph.querySelector(kind) || ph.querySelector('video, audio');
-      if (!media) return;
-      var ds = media.getAttribute('data-src');
-      if (ds) media.setAttribute('src', ds);
-      var sources = media.querySelectorAll('source[data-src]');
-      for (var i = 0; i < sources.length; i++) {
-        sources[i].setAttribute('src', sources[i].getAttribute('data-src'));
-      }
-      if (media.load) media.load();
-      if (media.play) { try { media.play(); } catch (e) {} }
+      loadMedia(ph);
       return;
     }
     var a = ev.target.closest('a');
@@ -107,6 +112,42 @@ object ArticleHtmlBuilder {
     }
     fnStack.push(a);
     flashScroll(target);
+  }, true);
+  /* 直绑兜底：委托路径在个别 WebView/事件目标上可能收不到点按，逐个占位再绑一次 */
+  (function () {
+    var phs = document.querySelectorAll('.media-ph');
+    for (var i = 0; i < phs.length; i++) {
+      (function (ph) {
+        ph.addEventListener('click', function (ev) {
+          if (!ph.classList.contains('is-on')) {
+            if (ev && ev.stopPropagation) ev.stopPropagation();
+            loadMedia(ph);
+          }
+        }, true);
+      })(phs[i]);
+    }
+  })();
+  /* 图片加载失败：换成可点的占位提示，点按带 cache-buster 重试（最多 3 次） */
+  document.addEventListener('error', function (ev) {
+    var im = ev.target;
+    if (!im || im.tagName !== 'IMG' || !im.closest || !im.closest('.article')) return;
+    if (im.classList.contains('favicon') || (im.closest && im.closest('.media-ph'))) return;
+    var retry = (parseInt(im.getAttribute('data-retry') || '0', 10) || 0) + 1;
+    if (retry > 3) return;
+    im.setAttribute('data-retry', String(retry));
+    var ph = document.createElement('div');
+    ph.className = 'img-retry';
+    ph.textContent = '图片加载失败，点按重试';
+    im.style.display = 'none';
+    if (im.parentNode) im.parentNode.insertBefore(ph, im);
+    ph.addEventListener('click', function () {
+      var src = im.getAttribute('src') || '';
+      if (!src) return;
+      if (ph.parentNode) ph.parentNode.removeChild(ph);
+      im.style.display = '';
+      var joiner = src.indexOf('?') >= 0 ? '&' : '?';
+      im.setAttribute('src', src + joiner + 'unifeed_retry=' + retry);
+    });
   }, true);
 })();
 """
@@ -179,10 +220,15 @@ mark.search-hit { background: ${p.mark}; color: inherit; padding: 0 2px; border-
 /* 音视频先出占位封面，点按后再插入真实控件，避免正文留白 */
 .media-ph { margin: 16px 0; border-radius: 12px; overflow: hidden; background: ${p.codeBg}; }
 .media-poster { position: relative; display: flex; align-items: center; justify-content: center; width: 100%; min-height: 180px; background-color: ${p.codeBg}; background-position: center; background-size: cover; background-repeat: no-repeat; cursor: pointer; }
-.media-ph[data-kind="audio"] .media-poster { min-height: 96px; }
-.media-play { width: 64px; height: 64px; border-radius: 50%; background: rgba(0,0,0,.55); position: relative; flex-shrink: 0; }
+/* 无封面时给渐变默认底 + 16:9 比例，不能一片空白；有封面时内联 background-image 会覆盖这里的渐变 */
+.media-ph[data-kind="iframe"] .media-poster, .media-ph[data-kind="video"] .media-poster { aspect-ratio: 16 / 9; min-height: 200px; background-image: linear-gradient(135deg, ${p.codeBg} 0%, ${p.border} 100%); }
+.media-ph[data-kind="audio"] .media-poster { min-height: 96px; background-image: none; }
+.media-play { width: 64px; height: 64px; border-radius: 50%; background: rgba(0,0,0,.55); position: relative; flex-shrink: 0; box-shadow: 0 2px 12px rgba(0,0,0,.25); }
 .media-play::after { content: ""; position: absolute; left: 24px; top: 18px; border-style: solid; border-width: 14px 0 14px 24px; border-color: transparent transparent transparent #fff; }
-.media-caption { position: absolute; right: 12px; bottom: 10px; color: ${p.muted}; font-size: 13px; }
+.media-caption { position: absolute; right: 12px; bottom: 10px; color: ${p.fg}; font-size: 13px; background: rgba(128,128,128,.35); border-radius: 10px; padding: 2px 10px; }
+/* 图片无地址/加载失败的占位卡 */
+.img-missing, .img-retry { margin: 16px 0; padding: 24px 16px; text-align: center; border: 1px dashed ${p.border}; border-radius: 12px; color: ${p.muted}; font-size: 13px; background: ${p.codeBg}; }
+.img-retry { cursor: pointer; }
 .media-ph.is-on .media-poster { display: none; }
 .media-ph video, .media-ph audio { width: 100%; display: none; }
 .media-ph.is-on video, .media-ph.is-on audio { display: block; }
@@ -319,25 +365,27 @@ $orig
             .replace(">", "&gt;")
     }
 
+    /** 纯文本中夹带真 HTML 标签的判定：正文里只要有标签就按 HTML 解析，混合内容（纯文本开头 + 后续 <a>/<iframe>）不能整段转义 */
+    private val HTML_TAG_HINT = Regex("""<[a-zA-Z][a-zA-Z0-9]*(\s[^<>]*)?/?>""")
+
     /**
      * 正文 HTML 归一化：去脚本/样式，图片/链接相对地址补全为绝对地址。
      */
     internal fun normalize(html: String, baseUrl: String?): String {
         if (html.isBlank()) return "<p>（无正文内容）</p>"
+        // 不能只看开头是不是 '<'：内容含任意 HTML 标签就按 HTML 解析，Jsoup 能处理混合内容
+        if (!html.trimStart().startsWith("<") && !HTML_TAG_HINT.containsMatchIn(html)) {
+            return "<p>${escape(html)}</p>"
+        }
         return try {
-            val doc: Document
-            if (html.trimStart().startsWith("<")) {
-                doc = Jsoup.parse(html)
-            } else {
-                return "<p>${escape(html)}</p>"
-            }
+            val doc: Document = Jsoup.parse(html)
             // iframe 留给后面改成占位封面，脚本/表单仍去掉
             doc.select("script,style,ins,noscript,form,button,input").remove()
 
-            // 1) 图片：懒加载属性补全 → src；各种相对地址 → 绝对地址；加 referrerpolicy 防防盗链
+            // 1) 图片：懒加载属性补全 → src；srcset 兜底；各种相对地址 → 绝对地址；加 referrerpolicy 防防盗链
             doc.select("img").forEach { img ->
                 if (img.attr("src").isBlank()) {
-                    for (k in listOf("data-src", "data-original", "data-lazy-src", "data-url", "data-actualsrc", "data-lazy", "data-echo", "data-thumb", "data-srcset", "data-ks-lazyload")) {
+                    for (k in listOf("data-src", "data-original", "data-lazy-src", "data-url", "data-actualsrc", "data-lazy", "data-echo", "data-thumb", "data-ks-lazyload")) {
                         val v = img.attr(k)
                         if (v.isNotBlank()) {
                             img.attr("src", v.substringBefore(" ").substringBefore(","))
@@ -345,13 +393,27 @@ $orig
                         }
                     }
                 }
+                if (img.attr("src").isBlank()) {
+                    // 只有 srcset、没有 src 的图：从候选里挑一张，否则 removeAttr("srcset") 后无图可显
+                    pickFromSrcset(img.attr("srcset").ifBlank { img.attr("data-srcset") })
+                        ?.let { img.attr("src", it) }
+                }
                 var src = img.attr("src")
                 src = absolutize(src, baseUrl)
                 if (src.isNotBlank()) img.attr("src", src)
                 img.removeAttr("srcset")
+                img.removeAttr("data-srcset")
                 img.removeAttr("data-src")
                 img.removeAttr("data-original")
                 img.removeAttr("loading")
+                if (img.attr("src").isBlank()) {
+                    // 懒加载属性和 srcset 都没救回来：给占位卡，不留空洞也不报错
+                    val missing = Element("div")
+                    missing.addClass("img-missing")
+                    missing.text("图片无法加载")
+                    img.replaceWith(missing)
+                    return@forEach
+                }
                 img.attr("referrerpolicy", "no-referrer")
             }
 
@@ -376,7 +438,25 @@ $orig
 
             doc.body().html()
         } catch (_: Exception) {
-            "<p>${escape(html)}</p>"
+            // 兜底不再整段转义：抽纯文本保留可读性，避免原始标签直接显示成文字
+            val text = runCatching { Jsoup.parse(html).body().text().ifBlank { html } }.getOrDefault(html)
+            "<p>${escape(text)}</p>"
+        }
+    }
+
+    /** srcset 候选（"url 描述符, url 描述符"）：优先描述符最大的一张，无描述符取最后一张 */
+    internal fun pickFromSrcset(srcset: String): String? {
+        val candidates = srcset.split(',').mapNotNull { part ->
+            val pieces = part.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+            val url = pieces.firstOrNull()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val w = pieces.getOrNull(1)?.removeSuffix("w")?.toFloatOrNull() ?: 0f
+            url to w
+        }
+        if (candidates.isEmpty()) return null
+        return if (candidates.any { it.second > 0f }) {
+            candidates.filter { it.second > 0f }.maxByOrNull { it.second }?.first
+        } else {
+            candidates.last().first
         }
     }
 
@@ -414,7 +494,7 @@ $orig
             val kind = el.tagName().lowercase()
             val poster = el.attr("poster").takeIf { it.isNotBlank() }?.let { absolutize(it, baseUrl) }.orEmpty()
             if (poster.isNotBlank()) el.attr("poster", poster)
-            val wrap = mediaShell(kind, poster, caption = if (kind == "audio") "音频" else "视频")
+            val wrap = mediaShell(kind, poster, caption = if (kind == "audio") "音频 · 点按播放" else "视频 · 点按播放")
             el.replaceWith(wrap)
             wrap.appendChild(el)
         }
@@ -425,7 +505,7 @@ $orig
                 el.remove()
                 return@forEach
             }
-            val wrap = mediaShell("iframe", iframePosterUrl(src).orEmpty(), caption = "视频")
+            val wrap = mediaShell("iframe", iframePosterUrl(src).orEmpty(), caption = "视频 · 点按播放")
             wrap.attr("data-src", src)
             el.replaceWith(wrap)
         }
@@ -495,6 +575,9 @@ $orig
         val href = a.attr("href")
         val frag = fragmentId(href)?.lowercase() ?: return false
         val cls = a.className().lowercase()
+        // 返回链接（↩）不是引用：fn 前缀片段会把它误判成引用，先排除，
+        // 否则其 href 被前面的接线改写后还会串到别的目标上，DOM 会被接乱
+        if (listOf("footnote-backref", "fn-back", "reversefootnote").any { it in cls }) return false
         val parent = a.parent()
         val parentTag = parent?.tagName()?.lowercase().orEmpty()
         val parentCls = parent?.className()?.lowercase().orEmpty()
