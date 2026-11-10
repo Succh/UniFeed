@@ -100,17 +100,24 @@ jobs:
           echo "Gitee 仓库: ${OWNER}/${REPO}"
           echo "目标 tag: ${TAG}"
 
+          json_id() {
+            python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d.get("id") or "") if isinstance(d, dict) else ""' "$1"
+          }
+
           RELEASE_JSON="$RUNNER_TEMP/gitee-release.json"
-          HTTP_CODE="$(curl -sS -o "$RELEASE_JSON" -w '%{http_code}' -H "$AUTH_HEADER" "${API}/releases/tags/${TAG}?access_token=${GITEE_TOKEN}")"
+          HTTP_CODE="$(curl -sS -o "$RELEASE_JSON" -w '%{http_code}' -H "$AUTH_HEADER" "${API}/releases/tags/${TAG}")"
           echo "查询同名 Release HTTP ${HTTP_CODE}"
 
           RELEASE_ID=""
-          if [ "$HTTP_CODE" = "200" ] && [ -s "$RELEASE_JSON" ] && [ "$(cat "$RELEASE_JSON")" != "null" ]; then
-            RELEASE_ID="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d.get("id") or "")' "$RELEASE_JSON")"
+          if [ "$HTTP_CODE" = "200" ]; then
+            RELEASE_ID="$(json_id "$RELEASE_JSON")"
           fi
 
           if [ -z "$RELEASE_ID" ]; then
             echo "同名 Release 不存在，正在创建 ${TAG}"
+            REPO_JSON="$RUNNER_TEMP/gitee-repo.json"
+            curl -sS -o "$REPO_JSON" -H "$AUTH_HEADER" "${API}" || true
+            TARGET_BRANCH="$(jq -r '.default_branch // "master"' "$REPO_JSON" 2>/dev/null || echo master)"
             CREATE_CODE="$(curl -sS -o "$RELEASE_JSON" -w '%{http_code}' \
               -X POST \
               -H "$AUTH_HEADER" \
@@ -119,6 +126,7 @@ jobs:
               --data-urlencode "tag_name=${TAG}" \
               --data-urlencode "name=UniFeed ${TAG}" \
               --data-urlencode "body=自动同步自 GitHub Release ${TAG}" \
+              --data-urlencode "target_commitish=${TARGET_BRANCH}" \
               "${API}/releases")"
             echo "创建 Release HTTP ${CREATE_CODE}"
             if [ "$CREATE_CODE" != "201" ] && [ "$CREATE_CODE" != "200" ]; then
@@ -127,7 +135,7 @@ jobs:
               echo >&2
               exit 1
             fi
-            RELEASE_ID="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d.get("id") or "")' "$RELEASE_JSON")"
+            RELEASE_ID="$(json_id "$RELEASE_JSON")"
           else
             echo "同名 Release 已存在，id=${RELEASE_ID}，检查附件"
           fi
@@ -139,33 +147,17 @@ jobs:
           fi
 
           ATTACH_JSON="$RUNNER_TEMP/gitee-attach.json"
-          ATTACH_CODE="$(curl -sS -o "$ATTACH_JSON" -w '%{http_code}' -H "$AUTH_HEADER" "${API}/releases/${RELEASE_ID}/attach_files?access_token=${GITEE_TOKEN}")"
+          ATTACH_CODE="$(curl -sS -o "$ATTACH_JSON" -w '%{http_code}' -H "$AUTH_HEADER" "${API}/releases/${RELEASE_ID}/attach_files")"
           echo "查询附件列表 HTTP ${ATTACH_CODE}"
           if [ "$ATTACH_CODE" != "200" ]; then
             echo "[]" > "$ATTACH_JSON"
           fi
 
-          HAS_ASSET="$(python3 -c '
-import json, sys
-wanted = sys.argv[1]
-names = []
-try:
-    rel = json.load(open(sys.argv[2]))
-except Exception:
-    rel = None
-if isinstance(rel, dict):
-    for a in rel.get("assets") or []:
-        names.append(a.get("name") or a.get("file_name") or "")
-try:
-    att = json.load(open(sys.argv[3]))
-except Exception:
-    att = []
-if isinstance(att, list):
-    for a in att:
-        if isinstance(a, dict):
-            names.append(a.get("name") or a.get("file_name") or a.get("filename") or "")
-print("yes" if wanted in names else "no")
-' "$ASSET_NAME" "$RELEASE_JSON" "$ATTACH_JSON")"
+          HAS_ASSET="$(jq -r --arg n "$ASSET_NAME" --slurpfile rel "$RELEASE_JSON" --slurpfile att "$ATTACH_JSON" '
+            def names:
+              .. | objects | (.name // .file_name // .filename // empty);
+            if any($rel[]?; names == $n) or any($att[]?; names == $n) then "yes" else "no" end
+          ')"
 
           if [ "$HAS_ASSET" = "yes" ]; then
             echo "附件 ${ASSET_NAME} 已存在，跳过上传。"
