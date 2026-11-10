@@ -23,16 +23,20 @@ android {
     }
 
     // 固定调试签名：CI 从 Secret 还原密钥到 signing/unifeed-debug.keystore 后用它签名，
-    // 保证每个版本签名一致、可直接覆盖安装；本地没有该文件时保持默认调试签名不受影响
+    // 保证每个版本签名一致、可直接覆盖安装。
+    // keystore 缺失时直接构建失败，绝不静默回落到默认 debug keystore——
+    // 否则 CI 每次现场生成随机密钥，导致版本间签名漂移
     signingConfigs {
         getByName("debug") {
             val ksFile = rootProject.file("signing/unifeed-debug.keystore")
-            if (ksFile.exists()) {
-                storeFile = ksFile
-                storePassword = "android"
-                keyAlias = "androiddebugkey"
-                keyPassword = "android"
+            check(ksFile.exists()) {
+                "固定调试密钥缺失: ${ksFile.absolutePath} 不存在。" +
+                    "请从 Secret DEBUG_KEYSTORE_BASE64 还原该文件后再构建（禁止回落到默认随机 debug keystore）"
             }
+            storeFile = ksFile
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
         }
     }
 
@@ -48,6 +52,8 @@ android {
         debug {
             isMinifyEnabled = false
             applicationIdSuffix = ".debug"
+            // 显式绑定固定签名，不依赖 AGP 对 debug buildType 的隐式默认
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 

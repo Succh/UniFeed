@@ -20,8 +20,8 @@ jobs:
           distribution: 'temurin'
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.10'
+        # 不再安装系统 gradle（8.10），统一用项目 wrapper ./gradlew 构建；
+        # setup-gradle 只负责依赖缓存
       - name: Restore fixed debug keystore
         run: |
           mkdir -p signing
@@ -35,7 +35,9 @@ jobs:
           sed -i "s/versionName = \".*\"/versionName = \"${{ steps.version.outputs.tag }}\"/" app/build.gradle.kts
           grep -n "versionCode\|versionName" app/build.gradle.kts
       - name: Build Debug APK
-        run: gradle assembleDebug
+        # 用项目 wrapper 构建；显式禁用 configuration cache，
+        # 避免缓存的配置在 keystore 缺失时走回落分支（签名漂移根因之一）
+        run: ./gradlew assembleDebug --no-configuration-cache
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
