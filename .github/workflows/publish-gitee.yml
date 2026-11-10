@@ -1,0 +1,185 @@
+name: Publish APK to Gitee
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "GitHub Release tag to sync, e.g. v0.1.33"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish-gitee:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve tag
+        id: tag
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            TAG="$INPUT_TAG"
+          else
+            TAG="$RELEASE_TAG"
+          fi
+          TAG="$(echo "$TAG" | tr -d '[:space:]')"
+          if [ -z "$TAG" ]; then
+            echo "无法解析 tag（release.tag_name / inputs.tag 均为空）" >&2
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "同步目标 tag: $TAG"
+
+      - name: Check Gitee secrets
+        id: check
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          GITEE_REPO: ${{ secrets.GITEE_REPO }}
+        run: |
+          missing=0
+          if [ -z "$GITEE_TOKEN" ]; then
+            echo "GITEE_TOKEN Secret 不存在或为空"
+            missing=1
+          fi
+          if [ -z "$GITEE_REPO" ]; then
+            echo "GITEE_REPO Secret 不存在或为空"
+            missing=1
+          fi
+          if [ "$missing" -eq 1 ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "未配置 Gitee Secret，跳过同步到 Gitee，不视为失败。"
+            echo "需要 GITEE_TOKEN（私人令牌）与 GITEE_REPO（owner/repo，例如 succh/UniFeed）。"
+            echo "配置步骤见 docs/gitee-release-setup.md"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "已检测到 GITEE_TOKEN 与 GITEE_REPO，继续同步。"
+          fi
+
+      - name: Download APK from GitHub Release
+        if: steps.check.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/apk"
+          gh release download "$TAG" \
+            --repo "${{ github.repository }}" \
+            --pattern "app-debug.apk" \
+            --dir "$RUNNER_TEMP/apk"
+          test -f "$RUNNER_TEMP/apk/app-debug.apk"
+          ls -lh "$RUNNER_TEMP/apk/app-debug.apk"
+
+      - name: Create or update Gitee Release
+        if: steps.check.outputs.skip != 'true'
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          GITEE_REPO: ${{ secrets.GITEE_REPO }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          APK_PATH: ${{ runner.temp }}/apk/app-debug.apk
+        run: |
+          set -euo pipefail
+
+          if ! echo "$GITEE_REPO" | grep -Eq '^[^/]+/[^/]+$'; then
+            echo "GITEE_REPO 格式应为 owner/repo，当前值不符合。" >&2
+            exit 1
+          fi
+
+          OWNER="${GITEE_REPO%%/*}"
+          REPO="${GITEE_REPO#*/}"
+          API="https://gitee.com/api/v5/repos/${OWNER}/${REPO}"
+          AUTH_HEADER="Authorization: token ${GITEE_TOKEN}"
+          ASSET_NAME="app-debug.apk"
+
+          echo "Gitee 仓库: ${OWNER}/${REPO}"
+          echo "目标 tag: ${TAG}"
+
+          json_id() {
+            python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d.get("id") or "") if isinstance(d, dict) else ""' "$1"
+          }
+
+          RELEASE_JSON="$RUNNER_TEMP/gitee-release.json"
+          HTTP_CODE="$(curl -sS -o "$RELEASE_JSON" -w '%{http_code}' -H "$AUTH_HEADER" "${API}/releases/tags/${TAG}")"
+          echo "查询同名 Release HTTP ${HTTP_CODE}"
+
+          RELEASE_ID=""
+          if [ "$HTTP_CODE" = "200" ]; then
+            RELEASE_ID="$(json_id "$RELEASE_JSON")"
+          fi
+
+          if [ -z "$RELEASE_ID" ]; then
+            echo "同名 Release 不存在，正在创建 ${TAG}"
+            REPO_JSON="$RUNNER_TEMP/gitee-repo.json"
+            curl -sS -o "$REPO_JSON" -H "$AUTH_HEADER" "${API}" || true
+            TARGET_BRANCH="$(jq -r '.default_branch // "master"' "$REPO_JSON" 2>/dev/null || echo master)"
+            CREATE_CODE="$(curl -sS -o "$RELEASE_JSON" -w '%{http_code}' \
+              -X POST \
+              -H "$AUTH_HEADER" \
+              -H "Content-Type: application/x-www-form-urlencoded" \
+              --data-urlencode "access_token=${GITEE_TOKEN}" \
+              --data-urlencode "tag_name=${TAG}" \
+              --data-urlencode "name=UniFeed ${TAG}" \
+              --data-urlencode "body=自动同步自 GitHub Release ${TAG}" \
+              --data-urlencode "target_commitish=${TARGET_BRANCH}" \
+              "${API}/releases")"
+            echo "创建 Release HTTP ${CREATE_CODE}"
+            if [ "$CREATE_CODE" != "201" ] && [ "$CREATE_CODE" != "200" ]; then
+              echo "创建 Gitee Release 失败，响应：" >&2
+              cat "$RELEASE_JSON" >&2
+              echo >&2
+              exit 1
+            fi
+            RELEASE_ID="$(json_id "$RELEASE_JSON")"
+          else
+            echo "同名 Release 已存在，id=${RELEASE_ID}，检查附件"
+          fi
+
+          if [ -z "$RELEASE_ID" ]; then
+            echo "未能得到 Gitee Release id" >&2
+            cat "$RELEASE_JSON" >&2
+            exit 1
+          fi
+
+          ATTACH_JSON="$RUNNER_TEMP/gitee-attach.json"
+          ATTACH_CODE="$(curl -sS -o "$ATTACH_JSON" -w '%{http_code}' -H "$AUTH_HEADER" "${API}/releases/${RELEASE_ID}/attach_files")"
+          echo "查询附件列表 HTTP ${ATTACH_CODE}"
+          if [ "$ATTACH_CODE" != "200" ]; then
+            echo "[]" > "$ATTACH_JSON"
+          fi
+
+          HAS_ASSET="$(jq -r --arg n "$ASSET_NAME" --slurpfile rel "$RELEASE_JSON" --slurpfile att "$ATTACH_JSON" '
+            def names:
+              .. | objects | (.name // .file_name // .filename // empty);
+            if any($rel[]?; names == $n) or any($att[]?; names == $n) then "yes" else "no" end
+          ')"
+
+          if [ "$HAS_ASSET" = "yes" ]; then
+            echo "附件 ${ASSET_NAME} 已存在，跳过上传。"
+            exit 0
+          fi
+
+          echo "附件 ${ASSET_NAME} 缺失，开始上传"
+          UPLOAD_JSON="$RUNNER_TEMP/gitee-upload.json"
+          UPLOAD_CODE="$(curl -sS -o "$UPLOAD_JSON" -w '%{http_code}' \
+            --connect-timeout 30 \
+            --max-time 180 \
+            -X POST \
+            -H "$AUTH_HEADER" \
+            -F "access_token=${GITEE_TOKEN}" \
+            -F "file=@${APK_PATH};filename=${ASSET_NAME};type=application/vnd.android.package-archive" \
+            "${API}/releases/${RELEASE_ID}/attach_files")"
+          echo "上传附件 HTTP ${UPLOAD_CODE}"
+          if [ "$UPLOAD_CODE" != "201" ] && [ "$UPLOAD_CODE" != "200" ]; then
+            echo "上传 Gitee 附件失败，响应：" >&2
+            cat "$UPLOAD_JSON" >&2
+            echo >&2
+            exit 1
+          fi
+          echo "已上传 ${ASSET_NAME} 到 Gitee Release ${TAG}"
+          echo "直链：https://gitee.com/${OWNER}/${REPO}/releases/download/${TAG}/${ASSET_NAME}"
