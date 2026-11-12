@@ -469,7 +469,12 @@ class UniFeedViewModel(application: Application) : AndroidViewModel(application)
 
     fun markAllRead() {
         viewModelScope.launch {
-            repo.markAllReadAll()
+            val feedId = _uiState.value.selectedFeedId
+            if (feedId != null && _uiState.value.filterMode == FilterMode.ALL) {
+                repo.markAllRead(feedId)
+            } else {
+                repo.markAllReadAll()
+            }
         }
     }
 
