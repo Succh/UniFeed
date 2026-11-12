@@ -4,8 +4,6 @@ import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,8 +21,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -71,11 +67,8 @@ import com.succh.unifeed.ui.theme.FoloDimens
 import com.succh.unifeed.ui.theme.GlassBlur
 import com.succh.unifeed.ui.theme.GlassPanel
 import com.succh.unifeed.ui.theme.ThemeMode
-import com.succh.unifeed.ui.theme.GlassTokens
 import com.succh.unifeed.ui.theme.glassChipBorder
 import com.succh.unifeed.ui.theme.glassChipColors
-import com.succh.unifeed.ui.theme.glassContentColor
-import com.succh.unifeed.ui.theme.glassGlowColor
 import com.succh.unifeed.ui.theme.glassMutedContentColor
 import com.succh.unifeed.ui.theme.glassTopAppBarColors
 import kotlinx.coroutines.Dispatchers
@@ -218,35 +211,30 @@ fun SettingsScreen(
                     }
                 }
                 Text("主题色", style = MaterialTheme.typography.labelMedium)
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "切换后全应用生效，桌面小部件标题条也跟随所选主题。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = glassMutedContentColor()
+                )
+                // 名称 + 色块的 chip，比纯色圆点直观；FlowRow 按实际宽度换行
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     AccentTheme.entries.forEach { accentOption ->
                         val selected = prefs.accent == accentOption
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clip(CircleShape)
-                                .background(accentOption.swatch)
-                                .border(
-                                    width = if (selected) 2.5.dp else GlassTokens.BorderWidth,
-                                    color = if (selected) {
-                                        glassContentColor()
-                                    } else {
-                                        glassGlowColor()
-                                    },
-                                    shape = CircleShape
+                        FilterChip(
+                            selected = selected,
+                            onClick = { prefs.accent = accentOption },
+                            label = { Text(accentOption.label) },
+                            leadingIcon = {
+                                Box(
+                                    modifier = Modifier
+                                        .size(14.dp)
+                                        .clip(CircleShape)
+                                        .background(accentOption.swatch)
                                 )
-                                .clickable { prefs.accent = accentOption },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (selected) {
-                                Icon(
-                                    Icons.Filled.Check,
-                                    contentDescription = accentOption.label,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                        }
+                            },
+                            colors = glassChipColors(),
+                            border = glassChipBorder(selected)
+                        )
                     }
                 }
                 Text("背景模糊", style = MaterialTheme.typography.labelMedium)
