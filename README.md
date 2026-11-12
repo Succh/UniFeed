@@ -2,10 +2,10 @@
 
 本地无限订阅源的 RSS / Atom 阅读器，受 [Folo](https://github.com/RSSNext/Folo) 启发。
 
-**当前最新版本：[v0.1.33](https://github.com/Succh/UniFeed/releases/tag/v0.1.33)**
+**当前最新版本：[v0.1.35](https://github.com/Succh/UniFeed/releases/tag/v0.1.35)**
 
 - GitHub：[https://github.com/Succh/UniFeed/releases/latest/download/app-debug.apk](https://github.com/Succh/UniFeed/releases/latest/download/app-debug.apk)
-- Gitee（国内）：[https://gitee.com/succh/UniFeed/releases/download/v0.1.33/app-debug.apk](https://gitee.com/succh/UniFeed/releases/download/v0.1.33/app-debug.apk)
+- Gitee（国内）：[https://gitee.com/succh/UniFeed/releases/download/v0.1.35/app-debug.apk](https://gitee.com/succh/UniFeed/releases/download/v0.1.35/app-debug.apk)
 
 ## 功能特点
 
@@ -48,7 +48,7 @@
 | 渠道 | 直链（点开即下载 APK） |
 | --- | --- |
 | GitHub Releases（主，始终最新版） | [https://github.com/Succh/UniFeed/releases/latest/download/app-debug.apk](https://github.com/Succh/UniFeed/releases/latest/download/app-debug.apk) |
-| Gitee Releases（国内，当前 v0.1.33） | [https://gitee.com/succh/UniFeed/releases/download/v0.1.33/app-debug.apk](https://gitee.com/succh/UniFeed/releases/download/v0.1.33/app-debug.apk) |
+| Gitee Releases（国内，当前 v0.1.35） | [https://gitee.com/succh/UniFeed/releases/download/v0.1.35/app-debug.apk](https://gitee.com/succh/UniFeed/releases/download/v0.1.35/app-debug.apk) |
 
 GitHub 在国内有时会超时，优先用 Gitee 直链。Gitee 同步步骤见 [https://github.com/Succh/UniFeed/blob/main/docs/gitee-release-setup.md](https://github.com/Succh/UniFeed/blob/main/docs/gitee-release-setup.md)。
 
