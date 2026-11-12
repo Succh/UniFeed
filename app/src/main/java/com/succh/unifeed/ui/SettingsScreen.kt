@@ -633,7 +633,7 @@ fun SettingsScreen(
             GlassPanel {
                 Text("关于", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "UniFeed v1.1 • 开源 RSS 阅读器",
+                    "UniFeed v0.1.35 • 开源 RSS 阅读器",
                     style = MaterialTheme.typography.bodyMedium,
                     color = glassMutedContentColor()
                 )
