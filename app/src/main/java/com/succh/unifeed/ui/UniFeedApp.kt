@@ -137,6 +137,7 @@ fun UniFeedApp(
             onSubmitQuery = viewModel::submitArticleSearch,
             onBack = viewModel::closeArticleSearch,
             onEntryClick = { clicked ->
+                viewModel.rememberCurrentArticleSearch()
                 restoreProgressOnOpen = true
                 readerList = state.articleSearchResults
                 selectedEntry = clicked

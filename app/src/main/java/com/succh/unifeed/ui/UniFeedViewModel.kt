@@ -207,6 +207,12 @@ class UniFeedViewModel(application: Application) : AndroidViewModel(application)
         runArticleSearch(query, debounce = false)
     }
 
+    /** 点搜索结果时记下当前词，避免只打字未按搜索就不进历史 */
+    fun rememberCurrentArticleSearch() {
+        val query = _uiState.value.articleSearchQuery
+        viewModelScope.launch { repo.recordSearchHistory(query) }
+    }
+
     private fun runArticleSearch(query: String, debounce: Boolean) {
         _uiState.update { it.copy(articleSearchQuery = query) }
         articleSearchJob?.cancel()
@@ -220,7 +226,9 @@ class UniFeedViewModel(application: Application) : AndroidViewModel(application)
             _uiState.update { it.copy(isSearchingArticles = true) }
             val results = repo.searchEntries(trimmed)
             _uiState.update { it.copy(articleSearchResults = results, isSearchingArticles = false) }
-            repo.recordSearchHistory(trimmed)
+            if (!debounce) {
+                repo.recordSearchHistory(trimmed)
+            }
         }
     }
 
