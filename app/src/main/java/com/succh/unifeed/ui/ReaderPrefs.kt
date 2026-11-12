@@ -8,6 +8,7 @@ import com.succh.unifeed.data.cache.ArticleRetention
 import com.succh.unifeed.data.cache.ImageCacheLimit
 import com.succh.unifeed.data.rss.RsshubEndpoints
 import com.succh.unifeed.data.work.RefreshInterval
+import com.succh.unifeed.desktop.UnreadWidgetProvider
 import com.succh.unifeed.ui.theme.AccentTheme
 import com.succh.unifeed.ui.theme.GlassBlur
 import com.succh.unifeed.ui.theme.ThemeMode
@@ -29,8 +30,9 @@ enum class TtsRate(val multiplier: Float, val label: String) {
 }
 
 class ReaderPrefs(context: Context) {
+    private val appContext = context.applicationContext
     private val sp: SharedPreferences =
-        context.applicationContext.getSharedPreferences("unifeed_prefs", Context.MODE_PRIVATE)
+        appContext.getSharedPreferences("unifeed_prefs", Context.MODE_PRIVATE)
 
     private val _fontSize = mutableFloatStateOf(sp.getFloat(KEY_SIZE, 17f))
     var fontSize: Float
@@ -189,22 +191,24 @@ class ReaderPrefs(context: Context) {
             sp.edit().putBoolean(KEY_UNREAD_BADGE, value).apply()
         }
 
-    /** 皮肤：深浅模式（跟随系统 / 手动固定） */
+    /** 皮肤：深浅模式（跟随系统 / 手动固定）；切换后同步刷新桌面小部件标题条配色 */
     private val _themeMode = mutableStateOf(ThemeMode.fromName(sp.getString(KEY_THEME_MODE, null)))
     var themeMode: ThemeMode
         get() = _themeMode.value
         set(value) {
             _themeMode.value = value
             sp.edit().putString(KEY_THEME_MODE, value.name).apply()
+            UnreadWidgetProvider.requestUpdate(appContext)
         }
 
-    /** 皮肤：主题色预设 */
+    /** 皮肤：主题色预设；切换后同步刷新桌面小部件标题条配色 */
     private val _accent = mutableStateOf(AccentTheme.fromName(sp.getString(KEY_ACCENT, null)))
     var accent: AccentTheme
         get() = _accent.value
         set(value) {
             _accent.value = value
             sp.edit().putString(KEY_ACCENT, value.name).apply()
+            UnreadWidgetProvider.requestUpdate(appContext)
         }
 
     /** 皮肤：背景光晕模糊强度 */
@@ -284,6 +288,24 @@ class ReaderPrefs(context: Context) {
             return context.applicationContext
                 .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                 .getBoolean(KEY_UNREAD_BADGE, true)
+        }
+
+        /** 直接读 SP 取当前主题色预设，供桌面小部件标题条取色，不新建 Compose 状态 */
+        fun currentAccent(context: Context): AccentTheme {
+            return AccentTheme.fromName(
+                context.applicationContext
+                    .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                    .getString(KEY_ACCENT, null)
+            )
+        }
+
+        /** 直接读 SP 取当前深浅模式，供桌面小部件标题条判断用哪套强调色 */
+        fun currentThemeMode(context: Context): ThemeMode {
+            return ThemeMode.fromName(
+                context.applicationContext
+                    .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                    .getString(KEY_THEME_MODE, null)
+            )
         }
     }
 }
