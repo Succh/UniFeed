@@ -177,7 +177,9 @@ fun UniFeedApp(
             isLoadingRsshub = state.isLoadingRsshub,
             rsshubError = state.rsshubError,
             onLoadRsshub = { viewModel.loadRsshubCatalog() },
-            onSubscribeRsshubRoute = { route, extra -> viewModel.subscribeRsshubRoute(route, extra) },
+            onSubscribeRsshubRoute = { route, extra ->
+                viewModel.subscribeRsshubRoute(route, extra, stayOnDiscover = true)
+            },
             onOpenArticleSearch = viewModel::openArticleSearch
         )
         return
