@@ -139,69 +139,82 @@ fun FeedListScreen(
                     .glassSurface(shape = RoundedCornerShape(FoloDimens.SearchRadius), elevation = 4.dp)
             )
             if (feeds.isEmpty()) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        Icons.Default.RssFeed,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(64.dp)
-                    )
-                    Spacer(Modifier.height(16.dp))
-                    Text("还没有订阅源\n点击右下角 + 添加第一个", style = MaterialTheme.typography.bodyLarge)
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            Icons.Default.RssFeed,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(64.dp)
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Text("还没有订阅源\n点击右下角 + 添加第一个", style = MaterialTheme.typography.bodyLarge)
+                    }
                 }
-            }
-        } else {
-            val feedGroups = remember(feeds, searchQuery) {
-                val filteredFeeds = if (searchQuery.isBlank()) feeds else feeds.filter {
-                    it.title.contains(searchQuery, ignoreCase = true) ||
-                    it.url.contains(searchQuery, ignoreCase = true)
+            } else {
+                val feedGroups = remember(feeds, searchQuery) {
+                    val filteredFeeds = if (searchQuery.isBlank()) feeds else feeds.filter {
+                        it.title.contains(searchQuery, ignoreCase = true) ||
+                            it.url.contains(searchQuery, ignoreCase = true)
+                    }
+                    val grouped = filteredFeeds.groupBy { it.folderId }
+                    FeedGroups(grouped, grouped.keys.sortedBy { it ?: Long.MAX_VALUE })
                 }
-                val grouped = filteredFeeds.groupBy { it.folderId }
-                FeedGroups(grouped, grouped.keys.sortedBy { it ?: Long.MAX_VALUE })
-            }
-            val grouped = feedGroups.byFolder
-            val sortedKeys = feedGroups.sortedFolderIds
+                val grouped = feedGroups.byFolder
+                val sortedKeys = feedGroups.sortedFolderIds
 
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(vertical = 8.dp)
-            ) {
-                sortedKeys.forEach { folderId ->
-                    val groupFeeds = grouped[folderId].orEmpty()
-                    val headerName = if (folderId == null) "未分类" else folderNameById[folderId] ?: "未知文件夹"
-                    item(key = "header_${folderId}") {
-                        // Folo 侧边栏分组标题：大写 + 字母间距 + 灰色小字
+                if (grouped.isEmpty() && searchQuery.isNotBlank()) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
                         Text(
-                            text = headerName.uppercase(),
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                letterSpacing = 1.6.sp,
-                                fontWeight = FontWeight.Medium
-                            ),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = FoloDimens.ScreenHorizontal, vertical = 12.dp)
+                            "没有匹配的订阅源",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-
-                    items(groupFeeds, key = { feed -> feed.id }) { feed ->
-                        FeedItem(
-                            feed = feed,
-                            selected = feed.id == selectedFeedId,
-                            latestTitle = latestTitles[feed.id],
-                            onClick = { onSelectFeed(feed.id) },
-                            onDelete = { onDeleteFeed(feed) },
-                            onMove = { moveTarget = feed },
-                            onRename = { renamingFeed = feed },
-                            onRefresh = { onRefreshFeed(feed) },
-                            onToggleGlobalFilter = {
-                                onSetApplyGlobalFilter(feed.id, !feed.applyGlobalFilter)
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(vertical = 8.dp)
+                    ) {
+                        sortedKeys.forEach { folderId ->
+                            val groupFeeds = grouped[folderId].orEmpty()
+                            val headerName = if (folderId == null) "未分类" else folderNameById[folderId] ?: "未知文件夹"
+                            item(key = "header_${folderId}") {
+                                Text(
+                                    text = headerName.uppercase(),
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        letterSpacing = 1.6.sp,
+                                        fontWeight = FontWeight.Medium
+                                    ),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = FoloDimens.ScreenHorizontal, vertical = 12.dp)
+                                )
                             }
-                        )
+
+                            items(groupFeeds, key = { feed -> feed.id }) { feed ->
+                                FeedItem(
+                                    feed = feed,
+                                    selected = feed.id == selectedFeedId,
+                                    latestTitle = latestTitles[feed.id],
+                                    onClick = { onSelectFeed(feed.id) },
+                                    onDelete = { onDeleteFeed(feed) },
+                                    onMove = { moveTarget = feed },
+                                    onRename = { renamingFeed = feed },
+                                    onRefresh = { onRefreshFeed(feed) },
+                                    onToggleGlobalFilter = {
+                                        onSetApplyGlobalFilter(feed.id, !feed.applyGlobalFilter)
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -220,7 +233,6 @@ fun FeedListScreen(
             onDeleteFolder = onDeleteFolder,
             onDismiss = { showFolderManager = false }
         )
-    }
     }
 
     renamingFeed?.let { feed ->
