@@ -9,5 +9,7 @@
 
     <style name="Theme.UniFeed.Starting" parent="Theme.UniFeed">
         <item name="android:windowBackground">@color/ic_launcher_background</item>
+        <item name="android:statusBarColor">@color/ic_launcher_background</item>
+        <item name="android:navigationBarColor">@color/ic_launcher_background</item>
     </style>
 </resources>
