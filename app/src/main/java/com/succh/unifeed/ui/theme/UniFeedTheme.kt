@@ -7,21 +7,15 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-/** UniFeed 品牌橙，浅色模式主色 */
-private val FoloOrange = Color(0xFFFF6D00)
-
-/** 深色模式下提高明度，保证对比度 */
-private val FoloOrangeLight = Color(0xFFFFB74D)
-
 /** 浅色：iOS grouped 灰底，玻璃半透明叠在上面才看得出 */
-private val LightColors = lightColorScheme(
-    primary = FoloOrange,
-    onPrimary = Color.White,
-    primaryContainer = Color(0xFFFFE0B2),
-    onPrimaryContainer = Color(0xFF4E2600),
+private val LightNeutral = lightColorScheme(
+    primary = AccentTheme.JADE.light.primary,
+    onPrimary = AccentTheme.JADE.light.onPrimary,
+    primaryContainer = AccentTheme.JADE.light.primaryContainer,
+    onPrimaryContainer = AccentTheme.JADE.light.onPrimaryContainer,
     secondary = Color(0xFF5D5D5D),
-    secondaryContainer = Color(0xFFFFE8D1),
-    onSecondaryContainer = Color(0xFF3E1A00),
+    secondaryContainer = AccentTheme.JADE.light.secondaryContainer,
+    onSecondaryContainer = AccentTheme.JADE.light.onSecondaryContainer,
     background = Color(0xFFF2F2F7),
     surface = Color(0xFFFFFFFF),
     surfaceVariant = Color(0xFFF2F2F7),
@@ -29,18 +23,19 @@ private val LightColors = lightColorScheme(
     onSurface = Color(0xFF1C1C1E),
     onSurfaceVariant = Color(0xFF8A8A8E),
     outline = Color(0xFFE5E5EA),
-    tertiary = Color(0xFFFFB300)
+    tertiary = AccentTheme.JADE.light.tertiary,
+    tertiaryContainer = AccentTheme.JADE.light.tertiaryContainer
 )
 
 /** 深色：iOS 系统黑底，surface 略抬高方便玻璃叠层 */
-private val DarkColors = darkColorScheme(
-    primary = FoloOrangeLight,
-    onPrimary = Color(0xFF3E1A00),
-    primaryContainer = Color(0xFF6D3B00),
-    onPrimaryContainer = Color(0xFFFFE0B2),
+private val DarkNeutral = darkColorScheme(
+    primary = AccentTheme.JADE.dark.primary,
+    onPrimary = AccentTheme.JADE.dark.onPrimary,
+    primaryContainer = AccentTheme.JADE.dark.primaryContainer,
+    onPrimaryContainer = AccentTheme.JADE.dark.onPrimaryContainer,
     secondary = Color(0xFFC8C8C8),
-    secondaryContainer = Color(0xFF3E2A14),
-    onSecondaryContainer = Color(0xFFFFE0B2),
+    secondaryContainer = AccentTheme.JADE.dark.secondaryContainer,
+    onSecondaryContainer = AccentTheme.JADE.dark.onSecondaryContainer,
     background = Color(0xFF000000),
     surface = Color(0xFF1C1C1E),
     surfaceVariant = Color(0xFF2C2C2E),
@@ -48,7 +43,8 @@ private val DarkColors = darkColorScheme(
     onSurface = Color(0xFFE8E8ED),
     onSurfaceVariant = Color(0xFF98989F),
     outline = Color(0xFF3A3A3C),
-    tertiary = Color(0xFFFFB300)
+    tertiary = AccentTheme.JADE.dark.tertiary,
+    tertiaryContainer = AccentTheme.JADE.dark.tertiaryContainer
 )
 
 /**
@@ -58,7 +54,7 @@ private val DarkColors = darkColorScheme(
 @Composable
 fun UniFeedTheme(
     themeMode: ThemeMode = ThemeMode.FOLLOW_SYSTEM,
-    accent: AccentTheme = AccentTheme.ORANGE,
+    accent: AccentTheme = AccentTheme.JADE,
     content: @Composable () -> Unit
 ) {
     val darkTheme = when (themeMode) {
@@ -66,18 +62,28 @@ fun UniFeedTheme(
         ThemeMode.LIGHT -> false
         ThemeMode.DARK -> true
     }
-    // 皮肤主题色只换 primary/primaryContainer 系；玻璃底、文字色由深浅模式决定
+    val palette = if (darkTheme) accent.dark else accent.light
     val scheme = if (darkTheme) {
-        DarkColors.copy(
-            primary = accent.darkPrimary,
-            primaryContainer = accent.darkContainer,
-            onPrimaryContainer = accent.onDarkContainer
+        DarkNeutral.copy(
+            primary = palette.primary,
+            onPrimary = palette.onPrimary,
+            primaryContainer = palette.primaryContainer,
+            onPrimaryContainer = palette.onPrimaryContainer,
+            secondaryContainer = palette.secondaryContainer,
+            onSecondaryContainer = palette.onSecondaryContainer,
+            tertiary = palette.tertiary,
+            tertiaryContainer = palette.tertiaryContainer
         )
     } else {
-        LightColors.copy(
-            primary = accent.lightPrimary,
-            primaryContainer = accent.lightContainer,
-            onPrimaryContainer = accent.onLightContainer
+        LightNeutral.copy(
+            primary = palette.primary,
+            onPrimary = palette.onPrimary,
+            primaryContainer = palette.primaryContainer,
+            onPrimaryContainer = palette.onPrimaryContainer,
+            secondaryContainer = palette.secondaryContainer,
+            onSecondaryContainer = palette.onSecondaryContainer,
+            tertiary = palette.tertiary,
+            tertiaryContainer = palette.tertiaryContainer
         )
     }
     MaterialTheme(

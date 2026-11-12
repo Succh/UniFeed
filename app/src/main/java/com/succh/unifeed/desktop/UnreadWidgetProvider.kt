@@ -6,10 +6,14 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.net.Uri
 import android.widget.RemoteViews
+import androidx.compose.ui.graphics.toArgb
 import com.succh.unifeed.MainActivity
 import com.succh.unifeed.R
+import com.succh.unifeed.ui.ReaderPrefs
+import com.succh.unifeed.ui.theme.ThemeMode
 
 /**
  * 桌面「最新未读」小部件：标题区打开应用，列表项打开对应文章。
@@ -46,6 +50,7 @@ class UnreadWidgetProvider : AppWidgetProvider() {
 
         private fun buildRemoteViews(context: Context, widgetId: Int): RemoteViews {
             val views = RemoteViews(context.packageName, R.layout.unread_widget)
+            applyHeaderTheme(context, views)
             val openApp = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or
                     Intent.FLAG_ACTIVITY_CLEAR_TOP or
@@ -84,6 +89,24 @@ class UnreadWidgetProvider : AppWidgetProvider() {
                 )
             )
             return views
+        }
+
+        /**
+         * 标题条跟随所选主题：按皮肤深浅模式（跟随系统 / 手动固定）取强调色，
+         * 运行时覆盖布局里的默认 @color/primary，切换主题后 requestUpdate 即生效。
+         */
+        private fun applyHeaderTheme(context: Context, views: RemoteViews) {
+            val accent = ReaderPrefs.currentAccent(context)
+            val dark = when (ReaderPrefs.currentThemeMode(context)) {
+                ThemeMode.LIGHT -> false
+                ThemeMode.DARK -> true
+                ThemeMode.FOLLOW_SYSTEM ->
+                    (context.resources.configuration.uiMode and
+                        Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+            }
+            val palette = if (dark) accent.dark else accent.light
+            views.setInt(R.id.widget_header, "setBackgroundColor", palette.primary.toArgb())
+            views.setTextColor(R.id.widget_header, palette.onPrimary.toArgb())
         }
     }
 }
