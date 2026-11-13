@@ -380,6 +380,9 @@ fun ReaderScreen(
                                     }
                                 }
                             }
+                            // factory 里已加载首帧 HTML，tag 同步记下，
+                            // 否则 AndroidView 首次 update 判定「未加载」再 load 一遍
+                            tag = articleHtml
                             loadDataWithBaseURL(baseUrl, articleHtml, "text/html", "UTF-8", null)
                         }
                     },
