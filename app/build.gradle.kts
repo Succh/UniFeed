@@ -68,6 +68,8 @@ android {
 
     buildFeatures {
         compose = true
+        // 设置页「关于」读取 BuildConfig.VERSION_NAME 展示版本号，随 CI 注入的发版号走
+        buildConfig = true
     }
 
     packaging {
