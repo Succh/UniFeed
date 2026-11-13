@@ -33,8 +33,8 @@ class EntrySearchTest {
         val ranges = EntrySearch.findRanges("Room 与 room 还有 ROOM", "room")
         assertEquals(3, ranges.size)
         assertEquals(0, ranges[0].first)
-        assertEquals(8, ranges[1].first)
-        assertEquals(16, ranges[2].first)
+        assertEquals(7, ranges[1].first)
+        assertEquals(15, ranges[2].first)
     }
 
     @Test
