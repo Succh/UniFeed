@@ -34,7 +34,10 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 
 /**
  * 订阅源仓库：统一管理订阅 CRUD 与抓取
@@ -287,6 +290,13 @@ class FeedRepository(
             throw FeedFetchException(FeedFetchException.Kind.RSSHUB, "无效的 RSSHub URL")
         }
 
+        // 直连优先：走到这里的 URL 多半是不经 RSSHub 的普通源，先直接抓一次，
+        // 成功就省掉向全部镜像发无意义请求（每次刷新 6 个必然失败的垃圾请求）；
+        // 失败（如未收录的自建 RSSHub 实例域名）才退回镜像竞速
+        val direct = runCatching { parser.fetch(resolved) }.getOrNull()
+        if (direct != null && (direct.entries.isNotEmpty() || direct.title.isNotEmpty())) {
+            return requireArticles(direct, resolved)
+        }
         val candidates = (mirrorCandidates().map { "$it/$path" } + resolved).distinct()
         val winner = raceFetch(candidates) ?: throw FeedFetchException(
             FeedFetchException.Kind.RSSHUB,
@@ -417,7 +427,17 @@ class FeedRepository(
     }
 
     suspend fun refreshAll(manual: Boolean = false) {
-        feedDao.observeAll().first().forEach { refreshFeed(it.id, manual) }
+        val feeds = feedDao.observeAll().first()
+        if (feeds.isEmpty()) return
+        // 有界并发：串行逐个刷新在订阅源一多时整轮要等太久；
+        // 又不能无限并发打爆源站与公共镜像，用信号量限流。
+        // refreshFeed 内部已兜底错误，单源失败互不影响
+        val gate = Semaphore(REFRESH_CONCURRENCY)
+        coroutineScope {
+            feeds.forEach { feed ->
+                launch { gate.withPermit { refreshFeed(feed.id, manual) } }
+            }
+        }
     }
 
     /**
@@ -724,6 +744,9 @@ class FeedRepository(
     private companion object {
         const val MAX_SUMMARY_LENGTH = 200
         const val MAX_SEARCH_HISTORY = 20
+
+        /** refreshAll 的并发上限：兼顾整轮耗时与对源站/镜像的礼貌 */
+        const val REFRESH_CONCURRENCY = 4
 
         /** 去 HTML 标签，预编译复用（每次抓取要跑上百篇） */
         val HTML_TAG = Regex("<[^>]+>")
