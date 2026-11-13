@@ -1,10 +1,11 @@
 package com.succh.unifeed.ui
 
 /**
- * 预置订阅源（F1-3）。
+ * 预置订阅源（F1-3，F3 扩充）。
  *
  * [url] 官方 RSS 用完整地址；RSSHub 源用相对路径（以 `/` 开头），订阅时拼到当前实例。
  * [source] 取值：`官方 RSS` / `RSSHub`。
+ * [fullText] 是否全文源：`true` 直接给完整正文，`false` 只有摘要；旧源未验证过的保持 null 不标注。
  * 修不好的源不会删除，只在 [failureHint] 里标注失败分类，UI 照样展示。
  */
 data class BuiltinFeed(
@@ -13,7 +14,8 @@ data class BuiltinFeed(
     val category: String,
     val source: String,
     val description: String = "",
-    val failureHint: String? = null
+    val failureHint: String? = null,
+    val fullText: Boolean? = null
 )
 
 data class BuiltinCategory(
@@ -51,7 +53,15 @@ object BuiltinFeeds {
                 BuiltinFeed("36氪热榜", "/36kr/hot-list", "科技", "RSSHub"),
                 BuiltinFeed("36氪快讯", "/36kr/newsflashes", "科技", "RSSHub"),
                 BuiltinFeed("掘金本月最热", "/juejin/trending/all/monthly", "科技", "RSSHub"),
-                BuiltinFeed("虎嗅资讯", "/huxiu/article", "科技", "RSSHub")
+                BuiltinFeed("虎嗅资讯", "/huxiu/article", "科技", "RSSHub"),
+                BuiltinFeed("TechCrunch", "https://techcrunch.com/feed/", "科技", "官方 RSS",
+                    "科技创投媒体，创业与产品动态", fullText = false),
+                BuiltinFeed("Engadget", "https://www.engadget.com/rss.xml", "科技", "官方 RSS",
+                    "消费电子与科技新闻", fullText = false),
+                BuiltinFeed("HackerNoon", "https://hackernoon.com/feed", "科技", "官方 RSS",
+                    "开发者写作社区，技术长文为主", fullText = true),
+                BuiltinFeed("OpenAI News", "https://openai.com/blog/rss.xml", "科技", "官方 RSS",
+                    "OpenAI 官方新闻与模型发布", fullText = false)
             )
         ),
         BuiltinCategory(
@@ -68,7 +78,13 @@ object BuiltinFeeds {
                 BuiltinFeed("人民网头条", "/people", "新闻", "RSSHub"),
                 BuiltinFeed("纽约时报首页", "/nytimes/rss/HomePage", "新闻", "RSSHub"),
                 BuiltinFeed("联合早报中国", "/zaobao/realtime/china", "新闻", "RSSHub"),
-                BuiltinFeed("BBC 世界新闻", "/bbc/world", "新闻", "RSSHub")
+                BuiltinFeed("BBC 世界新闻", "/bbc/world", "新闻", "RSSHub"),
+                BuiltinFeed("端传媒", "https://theinitium.com/feed", "新闻", "官方 RSS",
+                    "深度中文新闻报道，全文输出", fullText = true),
+                BuiltinFeed("德国之声中文网", "https://rss.dw.com/rdf/rss-chi-all", "新闻", "官方 RSS",
+                    "DW 中文国际新闻", fullText = false),
+                BuiltinFeed("经济学人·中国", "https://www.economist.com/china/rss.xml", "新闻", "官方 RSS",
+                    "The Economist 中国栏目", fullText = false)
             )
         ),
         BuiltinCategory(
@@ -84,7 +100,15 @@ object BuiltinFeeds {
                 BuiltinFeed("透明创业实验", "https://blog.t9t.io/atom.xml", "独立博客", "官方 RSS"),
                 BuiltinFeed("漫游代码", "https://manateelazycat.github.io/feed.xml", "独立博客", "官方 RSS"),
                 BuiltinFeed("董伟明", "https://www.dongwm.com/atom.xml", "独立博客", "官方 RSS"),
-                BuiltinFeed("少数派 Matrix", "/sspai/matrix", "独立博客", "RSSHub")
+                BuiltinFeed("少数派 Matrix", "/sspai/matrix", "独立博客", "RSSHub"),
+                BuiltinFeed("卡瓦邦噶", "https://www.kawabangga.com/feed", "独立博客", "官方 RSS",
+                    "凌云的博客，Linux/网络/工程实践长文", fullText = true),
+                BuiltinFeed("王登科", "https://greatdk.com/rss", "独立博客", "官方 RSS",
+                    "DK 的技术创业随笔", fullText = true),
+                BuiltinFeed("DIYgod", "https://diygod.cc/feed", "独立博客", "官方 RSS",
+                    "RSSHub 作者的博客", fullText = true),
+                BuiltinFeed("Reorx", "https://reorx.com/feed.xml", "独立博客", "官方 RSS",
+                    "Reorx 的文章与分享", fullText = true)
             )
         ),
         BuiltinCategory(
@@ -100,7 +124,11 @@ object BuiltinFeeds {
                 BuiltinFeed("豆瓣正在热映", "/douban/movie/playing", "二次元/ACG", "RSSHub"),
                 BuiltinFeed("豆瓣即将上映", "/douban/movie/coming", "二次元/ACG", "RSSHub"),
                 BuiltinFeed("豆瓣一周口碑榜", "/douban/movie/weekly", "二次元/ACG", "RSSHub"),
-                BuiltinFeed("豆瓣热门图书", "/douban/book/rank/fiction", "二次元/ACG", "RSSHub")
+                BuiltinFeed("豆瓣热门图书", "/douban/book/rank/fiction", "二次元/ACG", "RSSHub"),
+                BuiltinFeed("MyAnimeList News", "https://myanimelist.net/rss/news.xml", "二次元/ACG", "官方 RSS",
+                    "MAL 动画/漫画业界新闻", fullText = false),
+                BuiltinFeed("动漫花园新番", "https://share.dmhy.org/topics/rss/rss.xml", "二次元/ACG", "官方 RSS",
+                    "新番 BT 资源发布", fullText = false)
             )
         ),
         BuiltinCategory(
@@ -116,7 +144,25 @@ object BuiltinFeeds {
                 BuiltinFeed("GitHub Trending", "/github/trending/daily/javascript/en", "社区与开发", "RSSHub"),
                 BuiltinFeed("GitHub Issues 示例", "/github/issue/DIYgod/RSSHub", "社区与开发", "RSSHub"),
                 BuiltinFeed("机核资讯", "/gcores/news", "社区与开发", "RSSHub"),
-                BuiltinFeed("机核文章", "/gcores/articles", "社区与开发", "RSSHub")
+                BuiltinFeed("机核文章", "/gcores/articles", "社区与开发", "RSSHub"),
+                BuiltinFeed("Go 官方博客", "https://go.dev/blog/feed.atom", "社区与开发", "官方 RSS",
+                    "Go 语言官方发布与技术文章", fullText = true),
+                BuiltinFeed("Rust Blog", "https://blog.rust-lang.org/feed.xml", "社区与开发", "官方 RSS",
+                    "Rust 语言官方博客", fullText = true),
+                BuiltinFeed("V8 博客", "https://v8.dev/blog.atom", "社区与开发", "官方 RSS",
+                    "Chrome V8 引擎官方博客", fullText = true),
+                BuiltinFeed("Node.js Blog", "https://nodejs.org/en/feed/blog.xml", "社区与开发", "官方 RSS",
+                    "Node.js 官方公告与版本发布", fullText = false),
+                BuiltinFeed("JetBrains 官方博客", "https://blog.jetbrains.com/feed/", "社区与开发", "官方 RSS",
+                    "JetBrains 全产品动态", fullText = true),
+                BuiltinFeed("Android Developers", "https://android-developers.googleblog.com/feeds/posts/default", "社区与开发", "官方 RSS",
+                    "Android 开发者官方博客", fullText = false),
+                BuiltinFeed("React Blog", "https://react.dev/rss.xml", "社区与开发", "官方 RSS",
+                    "React 官方博客", fullText = false),
+                BuiltinFeed("Linux.do", "https://linux.do/latest.rss", "社区与开发", "官方 RSS",
+                    "Linux.do 社区最新帖子", fullText = false),
+                BuiltinFeed("Smashing Magazine", "https://www.smashingmagazine.com/feed", "社区与开发", "官方 RSS",
+                    "前端与设计深度文章，全文输出", fullText = true)
             )
         ),
         BuiltinCategory(
@@ -124,7 +170,13 @@ object BuiltinFeeds {
             listOf(
                 BuiltinFeed("Steam 新闻", "https://store.steampowered.com/feeds/news.xml", "游戏", "官方 RSS"),
                 BuiltinFeed("游研社官方", "https://www.yystv.cn/rss/news", "游戏", "官方 RSS"),
-                BuiltinFeed("游研社推荐", "/yystv/category/recommend", "游戏", "RSSHub")
+                BuiltinFeed("游研社推荐", "/yystv/category/recommend", "游戏", "RSSHub"),
+                BuiltinFeed("IGN", "https://feeds.ign.com/ign/games-all", "游戏", "官方 RSS",
+                    "国际游戏媒体 IGN 全平台报道", fullText = true),
+                BuiltinFeed("PC Gamer", "https://www.pcgamer.com/rss/", "游戏", "官方 RSS",
+                    "PC 游戏媒体", fullText = true),
+                BuiltinFeed("Rock Paper Shotgun", "https://www.rockpapershotgun.com/feed", "游戏", "官方 RSS",
+                    "PC 游戏评论与新闻", fullText = true)
             )
         ),
         BuiltinCategory(
@@ -132,7 +184,20 @@ object BuiltinFeeds {
             listOf(
                 BuiltinFeed("财联社热门", "/cls/hot", "财经商业", "RSSHub"),
                 BuiltinFeed("华尔街见闻快讯", "/wallstreetcn/live", "财经商业", "RSSHub"),
-                BuiltinFeed("财新周刊", "/caixin/weekly", "财经商业", "RSSHub")
+                BuiltinFeed("财新周刊", "/caixin/weekly", "财经商业", "RSSHub"),
+                BuiltinFeed("华尔街见闻官方", "https://dedicated.wallstreetcn.com/rss.xml", "财经商业", "官方 RSS",
+                    "华尔街见闻官方 RSS，全文输出", fullText = true)
+            )
+        ),
+        BuiltinCategory(
+            "视频",
+            listOf(
+                BuiltinFeed("Linus Tech Tips", "https://www.youtube.com/feeds/videos.xml?channel_id=UCXuqSBlHAE6Xw-yeJA0Tunw", "视频", "官方 RSS",
+                    "科技硬件评测频道", fullText = false),
+                BuiltinFeed("3Blue1Brown", "https://www.youtube.com/feeds/videos.xml?channel_id=UCYO_jab_esuFRV4b17AJtAw", "视频", "官方 RSS",
+                    "数学科普动画频道", fullText = false),
+                BuiltinFeed("Veritasium", "https://www.youtube.com/feeds/videos.xml?channel_id=UCHnyfMqiRRG1u-2MsSQLbXA", "视频", "官方 RSS",
+                    "科学科普频道", fullText = false)
             )
         )
     )

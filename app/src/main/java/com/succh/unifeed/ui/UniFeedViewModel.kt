@@ -12,6 +12,7 @@ import com.succh.unifeed.data.db.entity.Folder
 import com.succh.unifeed.data.db.entity.SearchHistory
 import com.succh.unifeed.data.model.FeedPreview
 import com.succh.unifeed.data.opml.OpmlManager
+import com.succh.unifeed.data.repository.FullContentResult
 import com.succh.unifeed.data.rss.DiscoveredFeed
 import com.succh.unifeed.data.rss.RsshubCatalog
 import com.succh.unifeed.data.rss.RsshubDocRoute
@@ -500,16 +501,32 @@ class UniFeedViewModel(application: Application) : AndroidViewModel(application)
 
     fun isContentIncomplete(entry: Entry): Boolean = repo.isContentIncomplete(entry)
 
-    fun loadFullContent(entry: Entry, onUpdated: (Entry) -> Unit) {
+    /**
+     * 加载全文：提取到全文 → [onUpdated] 渲染全文；
+     * 提取不到有效正文（视频页/正文过短/提取或抓取失败）→ [onOpenOriginal] 直接打开原文，
+     * 同时用 error 走 Snackbar 给出明确提示，不再静默无变化。
+     */
+    fun loadFullContent(entry: Entry, onUpdated: (Entry) -> Unit, onOpenOriginal: (String) -> Unit) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoadingFullContent = true, error = null) }
-            val result = repo.loadFullContent(entry)
-            result.onSuccess { updated ->
-                _uiState.update { it.copy(isLoadingFullContent = false) }
-                onUpdated(updated)
-            }.onFailure { e ->
-                _uiState.update {
-                    it.copy(isLoadingFullContent = false, error = e.message ?: "加载全文失败")
+            when (val result = repo.loadFullContent(entry)) {
+                is FullContentResult.Extracted -> {
+                    _uiState.update { it.copy(isLoadingFullContent = false) }
+                    onUpdated(result.entry)
+                }
+                is FullContentResult.OpenOriginal -> {
+                    _uiState.update { it.copy(isLoadingFullContent = false) }
+                    val link = entry.link
+                    if (link.isNullOrBlank() || !link.startsWith("http")) {
+                        _uiState.update {
+                            it.copy(error = "加载全文失败：${result.reason}，且没有可打开的原文链接")
+                        }
+                    } else {
+                        _uiState.update {
+                            it.copy(error = "未能提取到全文（${result.reason}），已为你打开原文页")
+                        }
+                        onOpenOriginal(link)
+                    }
                 }
             }
         }

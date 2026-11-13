@@ -2,10 +2,13 @@ package com.succh.unifeed.ui
 
 import android.annotation.SuppressLint
 import androidx.activity.compose.BackHandler
+import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.view.ViewGroup
+import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
@@ -35,6 +38,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -48,6 +52,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -59,6 +64,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import androidx.compose.ui.viewinterop.AndroidView
 import com.succh.unifeed.data.db.entity.Entry
 import com.succh.unifeed.data.rss.ReaderImageClient
@@ -84,6 +90,10 @@ private const val MARK_READ_DWELL_MS = 2000L
 /** 图片扩展名判定，WebView 每个子资源请求都会走一遍，故预编译 */
 private val IMAGE_EXT = Regex(".*\\.(png|jpg|jpeg|gif|webp|svg|bmp|ico|avif)(\\?.*)?$", RegexOption.IGNORE_CASE)
 
+/** WebView tag 用前缀区分加载目标：渲染正文 HTML 或原文页 URL，避免两种字符串撞车 */
+private fun articleTarget(html: String): String = "article:$html"
+private fun originalPageTarget(url: String?): String = "original:$url"
+
 @OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -100,6 +110,9 @@ fun ReaderScreen(
     contentIncomplete: Boolean = false,
     isLoadingFullContent: Boolean = false,
     onLoadFullContent: () -> Unit = {},
+    /** 非 null 时在阅读器 WebView 内直接打开原文页（「加载全文」提取不到正文的直达路径） */
+    originalPageUrl: String? = null,
+    onDismissOriginalPage: () -> Unit = {},
     listEntries: List<Entry> = emptyList(),
     restoreProgress: Boolean = true,
     onSwitchEntry: (Entry) -> Unit = {},
@@ -185,16 +198,25 @@ fun ReaderScreen(
     }
     val baseUrl = entry.link?.takeIf { it.startsWith("http") }
 
+    // 原文页模式：WebView 直接 loadUrl 原文，而不是渲染 ArticleHtmlBuilder 的正文 HTML
+    val showingOriginal = originalPageUrl != null
+    // WebViewClient 回调在工厂闭包里创建，不能直接捕获旧状态，用 rememberUpdatedState 取最新值
+    val latestOriginalPageUrl by rememberUpdatedState(originalPageUrl)
+    val latestDismissOriginal by rememberUpdatedState(onDismissOriginalPage)
+    var pageProgress by remember(entry.id) { mutableIntStateOf(0) }
+
     // 灯箱：正文图片列表随页面加载收集，与 PAGE_JS 打的 data-lb-i 索引一一对应；null 表示未打开
     var lightboxUrls by remember(entry.id) { mutableStateOf<List<String>>(emptyList()) }
     var lightboxData by remember(entry.id) { mutableStateOf<ReaderLightboxData?>(null) }
 
     // 手势/系统返回：有浮层先关浮层，否则回文章列表；没有这层 BackHandler 会直达 Activity 直接退出 APP。
     // 灯箱(Dialog)和 Aa 面板(ModalBottomSheet)各自窗口通常已拦截返回，这里兜底一层保证次序正确。
+    // 原文页模式下返回先回到渲染正文，再退才出阅读器。
     BackHandler {
         when {
             lightboxData != null -> lightboxData = null
             showAaPanel -> showAaPanel = false
+            originalPageUrl != null -> onDismissOriginalPage()
             else -> onBack()
         }
     }
@@ -305,6 +327,18 @@ fun ReaderScreen(
                 .padding(padding)
         ) {
             key(entry.id) {
+                // 主框架加载失败（网络错误/HTTP 4xx 5xx）时跳系统浏览器，并退回渲染正文
+                val fallbackToSystemBrowser: (String) -> Unit = { url ->
+                    scope.launch {
+                        snackbarHostState.showSnackbar("原文页加载失败，已跳转系统浏览器")
+                    }
+                    runCatching {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
+                    }.onFailure {
+                        scope.launch { snackbarHostState.showSnackbar("无法打开系统浏览器") }
+                    }
+                    latestDismissOriginal()
+                }
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
                     factory = { ctx ->
@@ -353,6 +387,13 @@ fun ReaderScreen(
                                 maybeSaveProgress(entry.id, ratio, latestSave)
                             }
                             pendingRestoreRatio = restoreRatio
+                            // 原文页模式下给页面加载进度条，让「打开中」有明确状态
+                            webChromeClient = object : WebChromeClient() {
+                                override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                                    pageProgress = newProgress
+                                }
+                            }
+                            var originalFallbackDone = false
                             webViewClient = object : WebViewClient() {
                                 override fun shouldInterceptRequest(
                                     view: WebView?,
@@ -379,24 +420,77 @@ fun ReaderScreen(
                                         if (urls.isNotEmpty()) lightboxUrls = urls
                                     }
                                 }
+
+                                override fun onReceivedError(
+                                    view: WebView?,
+                                    request: WebResourceRequest?,
+                                    error: WebResourceError?
+                                ) {
+                                    super.onReceivedError(view, request, error)
+                                    val url = latestOriginalPageUrl
+                                    if (url != null && request?.isForMainFrame == true && !originalFallbackDone) {
+                                        originalFallbackDone = true
+                                        fallbackToSystemBrowser(url)
+                                    }
+                                }
+
+                                override fun onReceivedHttpError(
+                                    view: WebView?,
+                                    request: WebResourceRequest?,
+                                    errorResponse: WebResourceResponse
+                                ) {
+                                    super.onReceivedHttpError(view, request, errorResponse)
+                                    val url = latestOriginalPageUrl
+                                    if (url != null && request?.isForMainFrame == true &&
+                                        errorResponse.statusCode >= 400 && !originalFallbackDone
+                                    ) {
+                                        originalFallbackDone = true
+                                        fallbackToSystemBrowser(url)
+                                    }
+                                }
                             }
-                            // factory 里已加载首帧 HTML，tag 同步记下，
+                            // factory 里已加载首帧内容，tag 同步记下，
                             // 否则 AndroidView 首次 update 判定「未加载」再 load 一遍
-                            tag = articleHtml
-                            loadDataWithBaseURL(baseUrl, articleHtml, "text/html", "UTF-8", null)
+                            if (latestOriginalPageUrl != null) {
+                                tag = originalPageTarget(latestOriginalPageUrl)
+                                loadUrl(latestOriginalPageUrl!!)
+                            } else {
+                                tag = articleTarget(articleHtml)
+                                loadDataWithBaseURL(baseUrl, articleHtml, "text/html", "UTF-8", null)
+                            }
                         }
                     },
                     update = { webView ->
-                        if (webView.tag!= articleHtml) {
-                            webView.tag = articleHtml
-                            webView.pendingRestoreRatio = restoreRatio
-                            webView.loadDataWithBaseURL(baseUrl, articleHtml, "text/html", "UTF-8", null)
+                        // 原文页与渲染正文是两种加载方式，用带前缀的 tag 区分，避免字符串撞车
+                        val target = if (showingOriginal) {
+                            originalPageTarget(originalPageUrl)
+                        } else {
+                            articleTarget(articleHtml)
+                        }
+                        if (webView.tag != target) {
+                            webView.tag = target
+                            if (showingOriginal) {
+                                webView.loadUrl(originalPageUrl!!)
+                            } else {
+                                webView.pendingRestoreRatio = restoreRatio
+                                webView.loadDataWithBaseURL(baseUrl, articleHtml, "text/html", "UTF-8", null)
+                            }
                         }
                     }
                 )
             }
 
-            if (contentIncomplete) {
+            // 原文页加载进度：让「加载全文 → 打开原文」的跳转有明确的进行中状态
+            if (showingOriginal && pageProgress in 1..99) {
+                LinearProgressIndicator(
+                    progress = { pageProgress / 100f },
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                )
+            }
+
+            if (contentIncomplete && !showingOriginal) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)

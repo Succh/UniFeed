@@ -40,6 +40,17 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 
 /**
+ * 「加载全文」结果：
+ * - [Extracted] 提取到比现有正文更完整的全文，已写回数据库；
+ * - [OpenOriginal] 提取不到有效正文（原文是视频页、正文过短、提取或抓取失败），
+ *   调用方应直接打开原文链接，不要停在原地让用户再点一次「阅读原文」。
+ */
+sealed class FullContentResult {
+    data class Extracted(val entry: Entry) : FullContentResult()
+    data class OpenOriginal(val reason: String) : FullContentResult()
+}
+
+/**
  * 订阅源仓库：统一管理订阅 CRUD 与抓取
  */
 class FeedRepository(
@@ -542,24 +553,27 @@ class FeedRepository(
     }
 
     /**
-     * 按需抓取原文：复用 ContentExtractor，成功后写回 Entry.content，
+     * 按需抓取原文：复用 ContentExtractor，成功后写回 Entry.content。
+     * 提取不到有效正文（原文是视频页/正文过短/提取或抓取失败）时不再让用户停在原地
+     * 二次点「阅读原文」，而是返回 [FullContentResult.OpenOriginal] 让调用方直接打开原文页。
      */
-    suspend fun loadFullContent(entry: Entry): Result<Entry> {
+    suspend fun loadFullContent(entry: Entry): FullContentResult {
         val link = entry.link
         if (link.isNullOrBlank()) {
-            return Result.failure(Exception("没有原文链接"))
+            return FullContentResult.OpenOriginal("没有原文链接")
         }
         return try {
             val html = parser.fetchHtml(link)
             val extracted = ContentExtractor.extract(html)
             if (extracted.isBlank() || extracted.length <= (entry.content?.length ?: 0)) {
-                return Result.failure(Exception("未能提取到更完整的正文"))
+                FullContentResult.OpenOriginal("未能提取到更完整的正文")
+            } else {
+                val updated = entry.copy(content = extracted)
+                entryDao.update(updated)
+                FullContentResult.Extracted(updated)
             }
-            val updated = entry.copy(content = extracted)
-            entryDao.update(updated)
-            Result.success(updated)
         } catch (e: Exception) {
-            Result.failure(e)
+            FullContentResult.OpenOriginal(e.message ?: "抓取原文失败")
         }
     }
 

@@ -81,6 +81,9 @@ fun UniFeedApp(
             ?: entry
         // 全文完整性判断要对正文做一次正则去标签，只在条目变化时重算
         val contentIncomplete = remember(liveEntry) { viewModel.isContentIncomplete(liveEntry) }
+        // 「加载全文」提取不到正文时在阅读器内直接打开原文页；换文章后重置
+        var originalPageUrl by remember { mutableStateOf<String?>(null) }
+        LaunchedEffect(selectedEntry?.id) { originalPageUrl = null }
         ReaderScreen(
             entry = liveEntry,
             prefs = prefs,
@@ -89,8 +92,14 @@ fun UniFeedApp(
             contentIncomplete = contentIncomplete,
             isLoadingFullContent = state.isLoadingFullContent,
             onLoadFullContent = {
-                viewModel.loadFullContent(liveEntry) { updated -> selectedEntry = updated}
+                viewModel.loadFullContent(
+                    liveEntry,
+                    onUpdated = { updated -> selectedEntry = updated },
+                    onOpenOriginal = { link -> originalPageUrl = link }
+                )
             },
+            originalPageUrl = originalPageUrl,
+            onDismissOriginalPage = { originalPageUrl = null },
             onBack = { selectedEntry = null },
             onToggleStar = { e, s -> viewModel.setStarred(e, s) },
             onToggleReadLater = { e, s -> viewModel.setReadLater(e, s) },

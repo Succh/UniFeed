@@ -836,6 +836,13 @@ private fun SwipeToAddRow(
     ) { content() }
 }
 
+/** 全文/摘要标注：旧源未验证过保持 null，不显示标注 */
+private fun kindMark(fullText: Boolean?): String = when (fullText) {
+    true -> " · 全文"
+    false -> " · 摘要"
+    null -> ""
+}
+
 @Composable
 private fun BuiltinFeedRow(
     feed: BuiltinFeed,
@@ -887,7 +894,7 @@ private fun BuiltinFeedRow(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        "${feed.category} · ${feed.source}",
+                        "${feed.category} · ${feed.source}${kindMark(feed.fullText)}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
