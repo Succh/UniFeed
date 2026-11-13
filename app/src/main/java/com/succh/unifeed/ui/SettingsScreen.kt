@@ -53,6 +53,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.succh.unifeed.BuildConfig
 import com.succh.unifeed.data.cache.ArticleRetention
 import com.succh.unifeed.data.cache.ByteSize
 import com.succh.unifeed.data.cache.ImageCache
@@ -621,7 +622,7 @@ fun SettingsScreen(
             GlassPanel {
                 Text("关于", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "UniFeed v0.1.35 • 开源 RSS 阅读器",
+                    "UniFeed ${BuildConfig.VERSION_NAME} • 开源 RSS 阅读器",
                     style = MaterialTheme.typography.bodyMedium,
                     color = glassMutedContentColor()
                 )

@@ -58,6 +58,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -269,9 +270,9 @@ fun EntryListScreen(
                                 showSummary = showSummary,
                                 onClick = { onEntryClick(entry) },
                                 onStar = { onStarToggle(entry, !entry.isStarred) },
-                                onMarkRead = { onMarkRead(entry) },
-                                onMarkUnread = { onMarkUnread(entry) },
-                                onReadLater = { onReadLaterToggle(entry, !entry.isReadLater) }
+                                onMarkRead = onMarkRead,
+                                onMarkUnread = onMarkUnread,
+                                onReadLater = onReadLaterToggle
                             )
                         }
                     }
@@ -487,21 +488,25 @@ private fun SwipeableEntryItem(
     showSummary: Boolean,
     onClick: () -> Unit,
     onStar: () -> Unit,
-    onMarkRead: () -> Unit,
-    onMarkUnread: () -> Unit,
-    onReadLater: () -> Unit
+    onMarkRead: (Entry) -> Unit,
+    onMarkUnread: (Entry) -> Unit,
+    onReadLater: (Entry, Boolean) -> Unit
 ) {
+    // rememberSwipeToDismissBoxState 只在首次组合捕获 confirmValueChange，
+    // 回调里必须读 rememberUpdatedState 的最新 entry：
+    // 否则滑动过一次后 isRead / isReadLater 还是旧值，切换方向失灵
+    val currentEntry by rememberUpdatedState(entry)
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
             when (value) {
                 SwipeToDismissBoxValue.StartToEnd -> {
                     // 右滑：切换已读/未读，不真正移除条目
-                    if (entry.isRead) onMarkUnread() else onMarkRead()
+                    if (currentEntry.isRead) onMarkUnread(currentEntry) else onMarkRead(currentEntry)
                     false
                 }
                 SwipeToDismissBoxValue.EndToStart -> {
                     // 左滑：稍后读，与收藏独立
-                    onReadLater()
+                    onReadLater(currentEntry, !currentEntry.isReadLater)
                     false
                 }
                 else -> false
