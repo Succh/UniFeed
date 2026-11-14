@@ -131,12 +131,23 @@ fun SettingsScreen(
     ) { uri ->
         if (uri != null) {
             scope.launch {
-                val (imported, skipped) = withContext(Dispatchers.IO) {
-                    val input = context.contentResolver.openInputStream(uri)
-                        ?: return@withContext (0 to 0)
-                    input.use { vm.importOpml(it) }
+                // 选择的文件可能已被源应用撤销授权（云端文件）或根本不是 XML，
+                // openInputStream/解析都会抛异常，不兜住会直接崩溃
+                val outcome = runCatching {
+                    withContext(Dispatchers.IO) {
+                        val input = context.contentResolver.openInputStream(uri)
+                            ?: return@withContext (0 to 0)
+                        input.use { vm.importOpml(it) }
+                    }
                 }
-                snackbarHostState.showSnackbar("导入 $imported 个，跳过 $skipped 个")
+                outcome.fold(
+                    onSuccess = { (imported, skipped) ->
+                        snackbarHostState.showSnackbar("导入 $imported 个，跳过 $skipped 个")
+                    },
+                    onFailure = {
+                        snackbarHostState.showSnackbar("OPML 导入失败，请确认所选文件为有效 OPML")
+                    }
+                )
             }
         }
     }
