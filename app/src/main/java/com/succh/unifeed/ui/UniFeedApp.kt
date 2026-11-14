@@ -75,9 +75,11 @@ fun UniFeedApp(
     val entry = selectedEntry
     if (entry != null) {
         val feed = state.feeds.firstOrNull { it.id == entry.feedId }
-        // 搜索结果可能不在当前列表筛选里，优先从搜索结果取最新快照
-        val liveEntry = state.articleSearchResults.firstOrNull { it.id == entry.id }
-            ?: state.entries.firstOrNull { it.id == entry.id }
+        // 优先取实时列表快照：搜索结果是一次性查询、DB 更新后不会跟着刷新，
+        // 若让它优先会把刚标星/已读/加载全文的新状态又遮回旧值（图标不切换、全文按钮不消失）；
+        // 被当前筛选过滤掉的文章在实时列表里找不到，才退回搜索结果快照
+        val liveEntry = state.entries.firstOrNull { it.id == entry.id }
+            ?: state.articleSearchResults.firstOrNull { it.id == entry.id }
             ?: entry
         // 全文完整性判断要对正文做一次正则去标签，只在条目变化时重算
         val contentIncomplete = remember(liveEntry) { viewModel.isContentIncomplete(liveEntry) }
