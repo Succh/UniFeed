@@ -36,8 +36,11 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * 「加载全文」结果：
@@ -695,10 +698,23 @@ class FeedRepository(
     }
 
     /**
+     * 同一源的入库互斥：查已有 guid→批量插入两步不是原子的，entries 表也没有 guid 唯一索引，
+     * 两个并发刷新（后台 Worker + 手动下拉，或骨架期二次下拉）都会读到同一份 guid 集合，
+     * 同批文章入库两次。按 feedId 加锁串行化，不同源之间互不影响。
+     */
+    private val saveLocks = ConcurrentHashMap<Long, Mutex>()
+
+    /**
      * 刷新入库：只保存 RSS 解析出的内容/摘要，禁止逐篇 fetchHtml。
      * 一次查出已有 guid，过滤后 insertAll 批量插入。
      */
-    private suspend fun saveEntries(feedId: Long, parsed: ParsedFeed) {
+    private suspend fun saveEntries(feedId: Long, parsed: ParsedFeed) = saveLocks
+        .getOrPut(feedId) { Mutex() }
+        .withLock {
+            saveEntriesLocked(feedId, parsed)
+        }
+
+    private suspend fun saveEntriesLocked(feedId: Long, parsed: ParsedFeed) {
         val existingGuids = entryDao.getGuidsByFeed(feedId).toHashSet()
         val now = System.currentTimeMillis()
         val rules = applicableRules(feedId)
