@@ -252,6 +252,12 @@ class UpdateManager private constructor(private val context: Context) {
 
     private fun apkFile(tag: String): File = File(File(context.cacheDir, "update"), "$tag.apk")
 
+    private fun formatBytes(bytes: Long): String = when {
+        bytes >= 1_000_000 -> "%.1fMB".format(bytes / 1_000_000f)
+        bytes >= 1_000 -> "%.0fKB".format(bytes / 1_000f)
+        else -> "${bytes}B"
+    }
+
     // ---------- 杂项 ----------
 
     private fun isNetworkAvailable(): Boolean {

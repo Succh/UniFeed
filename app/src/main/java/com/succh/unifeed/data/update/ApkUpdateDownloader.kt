@@ -2,11 +2,12 @@ package com.succh.unifeed.data.update
 
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -15,6 +16,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
+import java.io.InterruptedIOException
 import java.io.OutputStream
 import java.util.concurrent.TimeUnit
 
@@ -97,7 +99,8 @@ class ApkUpdateDownloader(context: Context, client: OkHttpClient? = null) {
         var lastError: String? = null
         for (source in candidates) {
             try {
-                downloadFrom(source, tag, partFile, doneFile, onState)
+                // runInterruptible：协程被取消时中断阻塞读，OkHttp 流会立刻抛 InterruptedIOException
+                runInterruptible { downloadFrom(source, tag, partFile, doneFile, onState) }
                 onState(DownloadState.Completed(doneFile))
                 return
             } catch (e: Exception) {
@@ -137,7 +140,7 @@ class ApkUpdateDownloader(context: Context, client: OkHttpClient? = null) {
             .map { it.source }
     }
 
-    private suspend fun downloadFrom(
+    private fun downloadFrom(
         source: UpdateSource,
         tag: String,
         partFile: File,
@@ -150,32 +153,23 @@ class ApkUpdateDownloader(context: Context, client: OkHttpClient? = null) {
             // 断点续传：从 .part 已有字节处继续
             builder.header("Range", "bytes=$alreadyHave-")
         }
-        val call = http.newCall(builder.build())
-        // 协程被取消时同步取消 OkHttp 调用，避免阻塞读卡在底层 socket
-        val cancellationHandle: kotlinx.coroutines.DisposableHandle? =
-            kotlinx.coroutines.currentCoroutineContext()[Job]?.invokeOnCancellation { call.cancel() }
-
-        try {
-            call.execute().use { response ->
-                val append = response.code == 206 && alreadyHave > 0
-                if (!append) {
-                    // 200 整包响应（源不支持 Range 或忽略断点），重头来
-                    if (alreadyHave > 0) partFile.delete()
-                    if (!partFile.exists()) partFile.parentFile?.mkdirs()
-                    partFile.createNewFile()
-                }
-                val totalBytes = parseTotalBytes(response, alreadyHave, append)
-                val input = response.body?.byteStream() ?: throw IOException("${source.label} 响应无内容")
-                FileOutputStream(partFile, append).use { output ->
-                    copyWithProgress(input, output, if (append) alreadyHave else 0L, totalBytes, source, onState)
-                }
-                if (!partFile.renameTo(doneFile)) {
-                    partFile.copyTo(doneFile, overwrite = true)
-                    partFile.delete()
-                }
+        http.newCall(builder.build()).execute().use { response ->
+            val append = response.code == 206 && alreadyHave > 0
+            if (!append) {
+                // 200 整包响应（源不支持 Range 或忽略断点），重头来
+                if (alreadyHave > 0) partFile.delete()
+                if (!partFile.exists()) partFile.parentFile?.mkdirs()
+                partFile.createNewFile()
             }
-        } finally {
-            cancellationHandle?.dispose()
+            val totalBytes = parseTotalBytes(response, alreadyHave, append)
+            val input = response.body?.byteStream() ?: throw IOException("${source.label} 响应无内容")
+            FileOutputStream(partFile, append).use { output ->
+                copyWithProgress(input, output, if (append) alreadyHave else 0L, totalBytes, source, onState)
+            }
+            if (!partFile.renameTo(doneFile)) {
+                partFile.copyTo(doneFile, overwrite = true)
+                partFile.delete()
+            }
         }
     }
 

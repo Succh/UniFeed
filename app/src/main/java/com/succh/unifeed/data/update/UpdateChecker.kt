@@ -68,7 +68,7 @@ class UpdateChecker(client: OkHttpClient? = null) {
         }
     }
 
-    private fun fetchLatest(url: String): UpdateInfo? {
+    private suspend fun fetchLatest(url: String): UpdateInfo? {
         return try {
             withTimeoutOrNull(15_000L) {
                 val request = Request.Builder()
