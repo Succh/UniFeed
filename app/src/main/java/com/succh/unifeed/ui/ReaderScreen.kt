@@ -234,7 +234,15 @@ fun ReaderScreen(
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    // 与 BackHandler 同一次序：有浮层先关浮层，原文页先回渲染正文，最后才退出阅读器
+                    IconButton(onClick = {
+                        when {
+                            lightboxData != null -> lightboxData = null
+                            showAaPanel -> showAaPanel = false
+                            originalPageUrl != null -> onDismissOriginalPage()
+                            else -> onBack()
+                        }
+                    }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                     }
                 },
