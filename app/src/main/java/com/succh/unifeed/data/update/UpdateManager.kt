@@ -91,10 +91,13 @@ class UpdateManager private constructor(private val context: Context) {
         }
     }
 
-    /** 开始/恢复 APP 内下载（后台协程 + 通知栏真实进度 + 断点续传） */
-    fun startDownload(info: UpdateInfo) {
+    /** 开始/恢复 APP 内下载（后台协程 + 通知栏真实进度 + 断点续传）。force=true 时清掉旧文件重下 */
+    fun startDownload(info: UpdateInfo, force: Boolean = false) {
         if (downloadJob?.isActive == true) return
-        if (_state.value.download is DownloadState.Completed) {
+        if (force) {
+            apkFile(info.tag).delete()
+            File(context.cacheDir, "update/${info.tag}.apk.part").delete()
+        } else if (_state.value.download is DownloadState.Completed && apkFile(info.tag).exists()) {
             // 已下完，直接装
             installApk()
             return
