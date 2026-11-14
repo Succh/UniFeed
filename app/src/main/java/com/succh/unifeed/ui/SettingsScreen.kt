@@ -1,5 +1,6 @@
 package com.succh.unifeed.ui
 
+import android.Manifest
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -27,6 +28,7 @@ import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -50,6 +52,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -60,6 +63,9 @@ import com.succh.unifeed.data.cache.ImageCache
 import com.succh.unifeed.data.cache.ImageCacheLimit
 import com.succh.unifeed.data.db.entity.FilterRule
 import com.succh.unifeed.data.rss.RsshubEndpoints
+import com.succh.unifeed.data.update.DownloadState
+import com.succh.unifeed.data.update.UpdateCheckResult
+import com.succh.unifeed.data.update.UpdateManager
 import com.succh.unifeed.data.work.RefreshInterval
 import com.succh.unifeed.data.work.RefreshWorker
 import com.succh.unifeed.desktop.UnreadBadge
@@ -638,8 +644,169 @@ fun SettingsScreen(
                     color = glassMutedContentColor()
                 )
             }
+
+            UpdateSettingPanel()
         }
     }
+}
+
+/**
+ * 检查更新面板：手动检查入口 + APP 内下载进度 + 浏览器备用下载入口。
+ * 检查失败/无新版/下载失败都如实展示，不静默。
+ */
+@Composable
+private fun UpdateSettingPanel() {
+    val context = LocalContext.current
+    val updateManager = remember { UpdateManager.get(context) }
+    val updateState by updateManager.state.collectAsState()
+
+    // Android 13+ 进度通知需要运行时授权；拒绝也不影响下载本身，只是通知栏看不到进度
+    val notifPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) {
+        updateState.pendingUpdate?.let { updateManager.startDownload(it) }
+    }
+
+    fun startInAppDownload() {
+        val info = updateState.pendingUpdate ?: return
+        if (updateManager.hasNotificationPermission()) {
+            updateManager.startDownload(info)
+        } else {
+            notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    GlassPanel {
+        Text("检查更新", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "当前版本 ${BuildConfig.VERSION_NAME}",
+            style = MaterialTheme.typography.bodySmall,
+            color = glassMutedContentColor()
+        )
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = { updateManager.checkNow() },
+                enabled = !updateState.isChecking && updateState.download !is DownloadState.Downloading
+            ) {
+                Text(if (updateState.isChecking) "检查中..." else "检查更新")
+            }
+            // 备用通道：浏览器打开 Release 下载页，用户自己在浏览器里下载、安装
+            TextButton(onClick = { updateManager.openReleasePageInBrowser() }) {
+                Text("在浏览器中下载")
+            }
+        }
+
+        when (val check = updateState.checkResult) {
+            is UpdateCheckResult.UpToDate -> Text(
+                "已是最新版本 ✓",
+                style = MaterialTheme.typography.bodyMedium,
+                color = glassMutedContentColor()
+            )
+            is UpdateCheckResult.Failed -> Text(
+                check.message,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error
+            )
+            is UpdateCheckResult.UpdateAvailable -> Text(
+                "发现新版本 ${check.info.versionName}",
+                style = MaterialTheme.typography.bodyMedium
+            )
+            null -> Unit
+        }
+
+        val pending = updateState.pendingUpdate
+        if (pending != null) {
+            // Release notes 摘要，过长截断
+            if (pending.releaseNotes.isNotBlank()) {
+                Text(
+                    pending.releaseNotes.take(500) + if (pending.releaseNotes.length > 500) "…" else "",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = glassMutedContentColor(),
+                    maxLines = 6,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            when (val download = updateState.download) {
+                is DownloadState.Downloading -> {
+                    if (download.totalBytes > 0) {
+                        LinearProgressIndicator(
+                            progress = {
+                                (download.receivedBytes.toFloat() / download.totalBytes).coerceIn(0f, 1f)
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    } else {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
+                    Text(
+                        "从${download.source.label}下载 ${formatUpdateBytes(download.receivedBytes)}" +
+                            (if (download.totalBytes > 0) " / ${formatUpdateBytes(download.totalBytes)}" else "") +
+                            "  ${formatUpdateBytes(download.speedBytesPerSec)}/s",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = glassMutedContentColor()
+                    )
+                    TextButton(onClick = { updateManager.cancelDownload() }) {
+                        Text("取消下载")
+                    }
+                }
+                is DownloadState.Completed -> {
+                    Text(
+                        "下载完成，点击安装即可更新",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { updateManager.installApk() }) {
+                            Text("安装")
+                        }
+                        TextButton(onClick = {
+                            // 安装失败/文件损坏时清掉旧包重下
+                            updateManager.startDownload(pending, force = true)
+                        }) {
+                            Text("重新下载")
+                        }
+                    }
+                }
+                is DownloadState.Failed -> {
+                    Text(
+                        download.message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { startInAppDownload() }) {
+                            Text("重试下载")
+                        }
+                        TextButton(onClick = { updateManager.openReleasePageInBrowser() }) {
+                            Text("在浏览器中下载")
+                        }
+                    }
+                }
+                DownloadState.Idle -> {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = { startInAppDownload() },
+                            enabled = !updateState.isChecking
+                        ) {
+                            Text("立即更新")
+                        }
+                        TextButton(onClick = { updateManager.openReleasePageInBrowser() }) {
+                            Text("在浏览器中下载")
+                        }
+                    }
+                }
+            }
+        }
+
+        // 无新版/失败已有行内明确提示，不额外弹加载框或弹窗打扰
+    }
+}
+
+private fun formatUpdateBytes(bytes: Long): String = when {
+    bytes >= 1_000_000 -> "%.1fMB".format(bytes / 1_000_000f)
+    bytes >= 1_000 -> "%.0fKB".format(bytes / 1_000f)
+    else -> "${bytes}B"
 }
 
 private fun refreshIntervalLabel(interval: RefreshInterval): String = when (interval) {

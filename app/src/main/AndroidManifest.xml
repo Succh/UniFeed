@@ -6,6 +6,8 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- 应用内更新：调起系统安装器安装下载好的 APK（Android 8+ 走未知来源授权流程） -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- ShortcutBadger：各启动器角标广播权限，不支持的启动器会静默失败 -->
     <uses-permission android:name="com.android.launcher.permission.READ_SETTINGS" />

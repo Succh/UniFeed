@@ -6,6 +6,7 @@ import coil.ImageLoader
 import coil.ImageLoaderFactory
 import com.succh.unifeed.data.cache.ImageCache
 import com.succh.unifeed.data.db.AppDatabase
+import com.succh.unifeed.data.update.UpdateManager
 import com.succh.unifeed.data.repository.FeedRepository
 import com.succh.unifeed.data.work.RefreshWorker
 import com.succh.unifeed.desktop.UnreadBadge
@@ -25,6 +26,8 @@ class UniFeedApp : Application(), ImageLoaderFactory {
         super.onCreate()
         // 启动时按当前档位与 Wi-Fi 约束恢复后台刷新
         RefreshWorker.reschedule(this, appPrefs)
+        // 启动静默检查更新：有网且隔天才查，只有发现新版才置状态弹窗，不打扰
+        UpdateManager.get(this).silentCheckOnStartup()
         // 启动时按保留策略清一次旧文章
         appScope.launch {
             repository.cleanupOldArticles(appPrefs.articleRetention)
