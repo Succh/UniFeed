@@ -573,7 +573,9 @@ private fun SearchResults(
                 onPreview = { onPreviewBuiltin(feed) }
             )
         }
-        items(visiblePreset, key = { "p_${it.second.path}_${it.second.title}" }) { entry ->
+        // 同一路由会在多个分类下重复出现（如 B站综合热门同时挂在「热门榜」与「二次元/ACG」），
+        // key 必须带上分类，否则搜索命中两条时 LazyColumn 直接抛 duplicate key 崩溃
+        items(visiblePreset, key = { "p_${it.first}_${it.second.path}_${it.second.title}" }) { entry ->
             val route = entry.second
             RouteRow(
                 title = route.title,

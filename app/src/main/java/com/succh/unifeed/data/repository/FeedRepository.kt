@@ -36,8 +36,11 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * 「加载全文」结果：
@@ -297,21 +300,30 @@ class FeedRepository(
         }
 
         val path = extractRsshubPath(resolved)
-        if (path.isEmpty()) {
-            throw FeedFetchException(FeedFetchException.Kind.RSSHUB, "无效的 RSSHub URL")
-        }
 
         // 直连优先：走到这里的 URL 多半是不经 RSSHub 的普通源，先直接抓一次，
         // 成功就省掉向全部镜像发无意义请求（每次刷新 6 个必然失败的垃圾请求）；
         // 失败（如未收录的自建 RSSHub 实例域名）才退回镜像竞速
-        val direct = runCatching { parser.fetch(resolved) }.getOrNull()
-        if (direct != null && (direct.entries.isNotEmpty() || direct.title.isNotEmpty())) {
-            return requireArticles(direct, resolved)
+        val directOutcome = runCatching { parser.fetch(resolved) }
+        directOutcome.getOrNull()?.let { direct ->
+            if (direct.entries.isNotEmpty() || direct.title.isNotEmpty()) {
+                return requireArticles(direct, resolved)
+            }
+        }
+        val directError = directOutcome.exceptionOrNull()
+
+        // 路径为空或明显是 feed 文件路径（/feed.xml、/atom.xml 之类）都不是 RSSHub 路由的形状，
+        // 镜像上必然不存在：如实报直连失败原因，不再发注定失败的镜像请求，
+        // 也不再把普通源 404 误报成「该路由可能暂不支持」
+        if (path.isEmpty() || isFeedFilePath(path)) {
+            throw directError
+                ?: FeedFetchException(FeedFetchException.Kind.RSSHUB, "无效的 RSSHub URL")
         }
         val candidates = (mirrorCandidates().map { "$it/$path" } + resolved).distinct()
         val winner = raceFetch(candidates) ?: throw FeedFetchException(
             FeedFetchException.Kind.RSSHUB,
-            "所有镜像均不可用，该路由可能暂不支持"
+            (directError?.message?.let { "直连失败：$it；" } ?: "") +
+                "所有镜像均不可用，该路由可能暂不支持"
         )
         return requireArticles(winner.first, winner.second)
     }
@@ -376,6 +388,17 @@ class FeedRepository(
     private fun extractRsshubPath(url: String): String {
         val path = FeedUrls.pathOf(url).trim('/')
         return if (path.startsWith("rsshub")) path.removePrefix("rsshub").trimStart('/') else path
+    }
+
+    /**
+     * 是否明显的 feed 文件路径（/feed.xml、/rss.xml、/atom.xml、末段 feed/rss/atom 等）。
+     * RSSHub 路由从不含这类末段，命中即说明是普通订阅源，
+     * 直连失败时镜像竞速必然全败，直接报直连原因即可。
+     */
+    private fun isFeedFilePath(path: String): Boolean {
+        val last = path.substringAfterLast('/', missingDelimiterValue = path).lowercase()
+        return last.endsWith(".xml") || last.endsWith(".rss") || last.endsWith(".atom") ||
+            last == "feed" || last == "rss" || last == "atom"
     }
 
     /**
@@ -675,10 +698,23 @@ class FeedRepository(
     }
 
     /**
+     * 同一源的入库互斥：查已有 guid→批量插入两步不是原子的，entries 表也没有 guid 唯一索引，
+     * 两个并发刷新（后台 Worker + 手动下拉，或骨架期二次下拉）都会读到同一份 guid 集合，
+     * 同批文章入库两次。按 feedId 加锁串行化，不同源之间互不影响。
+     */
+    private val saveLocks = ConcurrentHashMap<Long, Mutex>()
+
+    /**
      * 刷新入库：只保存 RSS 解析出的内容/摘要，禁止逐篇 fetchHtml。
      * 一次查出已有 guid，过滤后 insertAll 批量插入。
      */
-    private suspend fun saveEntries(feedId: Long, parsed: ParsedFeed) {
+    private suspend fun saveEntries(feedId: Long, parsed: ParsedFeed) = saveLocks
+        .getOrPut(feedId) { Mutex() }
+        .withLock {
+            saveEntriesLocked(feedId, parsed)
+        }
+
+    private suspend fun saveEntriesLocked(feedId: Long, parsed: ParsedFeed) {
         val existingGuids = entryDao.getGuidsByFeed(feedId).toHashSet()
         val now = System.currentTimeMillis()
         val rules = applicableRules(feedId)
