@@ -197,7 +197,8 @@ class FeedRepository(
             val existing = feedDao.getByUrl(preview.url)
             val feed = if (existing != null) {
                 val updated = existing.copy(
-                    title = preview.title,
+                    // 重订阅已存在的源：用户改过名就保留旧名称，不被抓取标题覆盖
+                    title = if (existing.userRenamed) existing.title else preview.title,
                     siteUrl = preview.siteUrl,
                     description = preview.description,
                     faviconUrl = preview.faviconUrl.ifEmpty { existing.faviconUrl },
@@ -418,9 +419,10 @@ class FeedRepository(
             val missingMetadata = current.siteUrl.isNullOrBlank() && current.faviconUrl.isNullOrBlank()
             feedDao.update(
                 if (missingMetadata) {
-                    // 即时订阅只写了 URL，首次抓取补充元数据；此后不再覆盖用户改名
+                    // 即时订阅只写了 URL，首次抓取补充元数据；
+                    // 用户改过名（userRenamed）就不再用抓取到的标题覆盖
                     current.copy(
-                        title = parsed.title.ifEmpty { current.title },
+                        title = if (current.userRenamed) current.title else parsed.title.ifEmpty { current.title },
                         siteUrl = parsed.siteUrl,
                         description = parsed.description?.takeIf { it.isNotBlank() } ?: current.description,
                         faviconUrl = buildFaviconUrl(parsed.siteUrl ?: current.url),
@@ -653,7 +655,7 @@ class FeedRepository(
         val trimmed = newTitle.trim()
         if (trimmed.isEmpty()) return false
         val feed = feedDao.getById(feedId) ?: return false
-        feedDao.update(feed.copy(title = trimmed))
+        feedDao.update(feed.copy(title = trimmed, userRenamed = true))
         return true
     }
 

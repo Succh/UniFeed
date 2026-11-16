@@ -20,5 +20,7 @@ data class Feed(
     /** 上次刷新失败原因；成功时为 null */
     val lastRefreshError: String? = null,
     /** 是否套用全局关键字规则；关闭后仅该源专属规则生效 */
-    val applyGlobalFilter: Boolean = true
+    val applyGlobalFilter: Boolean = true,
+    /** 用户手动改过名称；为 true 时刷新/重订阅不再用抓取到的标题覆盖 */
+    val userRenamed: Boolean = false
 )
