@@ -67,7 +67,9 @@ fun DiscoverScreen(
     rsshubError: String? = null,
     onLoadRsshub: () -> Unit = {},
     onSubscribeRsshubRoute: (RsshubDocRoute, String) -> Unit = { _, _ -> },
-    onOpenArticleSearch: () -> Unit = {}
+    onOpenArticleSearch: () -> Unit = {},
+    /** 与主界面共享的 Snackbar 宿主：订阅成功/失败等提示在本页也能弹出 */
+    snackbarHostState: SnackbarHostState = remember { SnackbarHostState() }
 ) {
     var activeTab by remember { mutableIntStateOf(0) }
     var presetCat by remember { mutableStateOf<BuiltinCategory?>(null) }
@@ -266,6 +268,7 @@ fun DiscoverScreen(
 
     Scaffold(
         containerColor = Color.Transparent,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text(titleText) },
@@ -1010,7 +1013,7 @@ private fun FeedPreviewCard(
                     Text(title, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
                 }
             }
-            // 发现页没有 Snackbar 宿主，订阅失败必须落在卡片里可见
+            // 预览 Dialog 覆盖在页面之上，订阅失败原因落在预览卡片里更直接（Snackbar 易被遮挡）
             subscribeError?.let { err ->
                 Spacer(Modifier.height(12.dp))
                 Text(

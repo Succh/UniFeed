@@ -58,6 +58,15 @@ fun UniFeedApp(
         }
     }
 
+    // 成功类提示（如订阅成功）也走共享 Snackbar，发现页/搜索页已挂同一宿主
+    LaunchedEffect(state.snackbarMessage) {
+        val message = state.snackbarMessage
+        if (!message.isNullOrBlank()) {
+            snackbarHostState.showSnackbar(message)
+            viewModel.clearSnackbarMessage()
+        }
+    }
+
     fun updateRsshubInstance(instance: String?) {
         prefs.rsshubInstance = instance
         // 注意：必须用全限定名，避免与本文件的 Composable 函数 UniFeedApp 重名冲突
@@ -157,7 +166,8 @@ fun UniFeedApp(
             history = state.searchHistory,
             onReplayHistory = viewModel::replaySearchHistory,
             onDeleteHistory = viewModel::deleteSearchHistory,
-            onClearHistory = viewModel::clearSearchHistory
+            onClearHistory = viewModel::clearSearchHistory,
+            snackbarHostState = snackbarHostState
         )
         return
     }
@@ -192,7 +202,8 @@ fun UniFeedApp(
             onSubscribeRsshubRoute = { route, extra ->
                 viewModel.subscribeRsshubRoute(route, extra, stayOnDiscover = true)
             },
-            onOpenArticleSearch = viewModel::openArticleSearch
+            onOpenArticleSearch = viewModel::openArticleSearch,
+            snackbarHostState = snackbarHostState
         )
         return
     }
