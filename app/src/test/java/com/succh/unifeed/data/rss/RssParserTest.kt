@@ -214,4 +214,51 @@ class RssParserTest {
         val updatedEntry = parser.parse(updatedXml, "https://a.example/atom.xml").entries[0]
         assertEquals(expected, updatedEntry.publishedAt)
     }
+
+    /** 内联子元素前的文本不能丢（回归：正文缺字） */
+    @Test
+    fun textBeforeInlineChildIsKept() {
+        val xml = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <rss version="2.0"><channel><title>T</title>
+              <item><title>A</title><link>https://a.example/1</link><guid>g1</guid>
+                <description>前文 <a href="https://a.example/x">链接</a> 后文</description>
+              </item>
+            </channel></rss>
+        """.trimIndent()
+        val entry = parser.parse(xml, "https://a.example/feed").entries[0]
+        assertEquals("前文 链接 后文", entry.summary?.trim())
+    }
+
+    /** Atom xhtml 正文：多层嵌套的内联子元素文本也要完整并入父级 */
+    @Test
+    fun atomXhtmlContentKeepsAllText() {
+        val xml = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <feed xmlns="http://www.w3.org/2005/Atom">
+              <title>T</title>
+              <entry><title>A</title><id>id-1</id>
+                <link href="https://a.example/1"/>
+                <content type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml">
+                  <p>前文 <b>加粗</b> 中段 <em>强调</em> 后文</p>
+                </div></content>
+              </entry>
+            </feed>
+        """.trimIndent()
+        val entry = parser.parse(xml, "https://a.example/atom.xml").entries[0]
+        assertEquals("前文 加粗 中段 强调 后文", entry.content?.trim())
+    }
+
+    /** 标题带内联子元素同样不能缺字 */
+    @Test
+    fun titleWithInlineChildIsComplete() {
+        val xml = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <rss version="2.0"><channel><title>T</title>
+              <item><title>标题 <em>强调</em></title><link>https://a.example/1</link><guid>g1</guid></item>
+            </channel></rss>
+        """.trimIndent()
+        val entry = parser.parse(xml, "https://a.example/feed").entries[0]
+        assertEquals("标题 强调", entry.title)
+    }
 }

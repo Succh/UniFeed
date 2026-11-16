@@ -182,7 +182,10 @@ class RssParser(private val client: OkHttpClient = OkHttpClient.Builder()
         val entries = mutableListOf<ParsedEntry>()
 
         var currentEntry: ParsedEntry? = null
-        var currentText = StringBuilder()
+        // 每层元素一个文本缓冲：START_TAG 压栈、END_TAG 弹栈并并入父层。
+        // 不能像旧实现那样在 START_TAG 里整体重置，否则内联子元素（<a>/<b>/<em>/<span> 等）
+        // 前面的文本会被清掉、子元素文本也传不到父级，正文缺字
+        val textStack = ArrayDeque<StringBuilder>()
         var inItem = false
         var inChannel = false
         var tagName = ""
@@ -196,7 +199,7 @@ class RssParser(private val client: OkHttpClient = OkHttpClient.Builder()
                 when (eventType) {
                     XmlPullParser.START_TAG -> {
                         tagName = local(parser.name)
-                        currentText = StringBuilder()
+                        textStack.addLast(StringBuilder())
                         if (tagName.equals("rss", true) || tagName.equals("rdf", true) ||
             tagName.equals("feed", true)
                         ) {
@@ -258,10 +261,14 @@ class RssParser(private val client: OkHttpClient = OkHttpClient.Builder()
                     }
 
                     XmlPullParser.TEXT, XmlPullParser.CDSECT -> {
-                        currentText.append(parser.text ?: "")
+                        textStack.lastOrNull()?.append(parser.text ?: "")
                     }
 
                     XmlPullParser.END_TAG -> {
+                        // 本层文本弹栈并入父层，父级（如 description/content）收到的
+                        // 是包含内联子元素文本的完整内容
+                        val currentText = textStack.removeLastOrNull() ?: StringBuilder()
+                        textStack.lastOrNull()?.append(currentText)
                         val text = currentText.toString().trim()
                         val tagname = local(parser.name)
 
