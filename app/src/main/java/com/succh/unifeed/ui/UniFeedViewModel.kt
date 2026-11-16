@@ -60,7 +60,9 @@ data class UniFeedUiState(
     val articleSearchResults: List<Entry> = emptyList(),
     val isSearchingArticles: Boolean = false,
     val searchHistory: List<SearchHistory> = emptyList(),
-    val filterRules: List<FilterRule> = emptyList()
+    val filterRules: List<FilterRule> = emptyList(),
+    /** 成功类提示（如订阅成功），由共享 SnackbarHost 弹出；展示后即清除 */
+    val snackbarMessage: String? = null
 )
 
 enum class FilterMode { ALL, UNREAD, STARRED, READ_LATER }
@@ -364,7 +366,9 @@ class UniFeedViewModel(application: Application) : AndroidViewModel(application)
                     _uiState.update { st ->
                         st.copy(
                             isLoading = false,
-                            // 留在发现页时把首抓失败原因挂到页内错误条，Snackbar 在发现页不可见
+                            // 留在发现页时订阅成功也弹 Snackbar（发现页已挂共享 SnackbarHost）；
+                            // 首抓失败原因仍挂页内错误条展示细节
+                            snackbarMessage = if (stayOnDiscover) "已订阅「${feed.title}」" else st.snackbarMessage,
                             subscribeError = if (stayOnDiscover && failure != null)
                                 "已添加「${feed.title}」，但抓取失败：$failure" else st.subscribeError
                         )
@@ -497,6 +501,10 @@ class UniFeedViewModel(application: Application) : AndroidViewModel(application)
 
     fun clearError() {
         _uiState.update { it.copy(error = null, subscribeError = null) }
+    }
+
+    fun clearSnackbarMessage() {
+        _uiState.update { it.copy(snackbarMessage = null) }
     }
 
     fun isContentIncomplete(entry: Entry): Boolean = repo.isContentIncomplete(entry)
